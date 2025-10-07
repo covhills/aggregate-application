@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover, maximum-scale=1.0" />
+
+    <!-- Prevent indexing and crawling -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nocache, nosnippet, noimageindex" />
+
+    <!-- Theme Colors -->
+    <meta name="theme-color" content="#3182ce" />
+    <meta name="msapplication-TileColor" content="#3182ce" />
+
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <title>Aggregator App</title>
+
+    <!-- GitHub Pages SPA redirect script -->
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+    </script>
+
+    <style>
+      html {
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      body {
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Chakra UI ColorModeScript for localStorage persistence -->
+    <script>
+      (function() {
+        try {
+          var chakraColorMode = localStorage.getItem('chakra-ui-color-mode');
+          if (chakraColorMode) {
+            document.documentElement.setAttribute('data-theme', chakraColorMode);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
