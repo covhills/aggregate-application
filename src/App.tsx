@@ -168,7 +168,7 @@ function App() {
   return (
     <ChakraProvider theme={theme}>
       <AuthProvider>
-        <Router basename="/aggregator-app">
+        <Router basename="/aggregate-application">
           <AppHeader />
           <Routes>
             <Route path="/login" element={<Login />} />
