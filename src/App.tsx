@@ -7,6 +7,7 @@ import { Login } from './pages/Login';
 import { FormPage } from './pages/FormPage';
 import { AdminPage } from './pages/AdminPage';
 import { MetricsPage } from './pages/MetricsPage';
+import { SnakeGame } from './pages/SnakeGame';
 import { ColorModeToggle } from './components/ColorModeToggle';
 import theme from './theme';
 import { signOut } from 'firebase/auth';
@@ -210,6 +211,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <MetricsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/secret-snake"
+              element={
+                <ProtectedRoute>
+                  <SnakeGame />
                 </ProtectedRoute>
               }
             />

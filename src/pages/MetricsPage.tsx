@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
   Heading,
   VStack,
-  HStack,
   Stack,
   Text,
   Spinner,
@@ -30,6 +29,7 @@ import {
   Td,
   useColorModeValue
 } from '@chakra-ui/react';
+import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -47,11 +47,13 @@ interface ReferralData {
 
 export const MetricsPage = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const [referrals, setReferrals] = useState<ReferralData[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filteredReferrals, setFilteredReferrals] = useState<ReferralData[]>([]);
+  const keySequenceRef = useRef<string>('');
 
   const cardBg = useColorModeValue('white', 'gray.700');
   const statBg = useColorModeValue('blue.50', 'blue.900');
@@ -63,6 +65,32 @@ export const MetricsPage = () => {
   useEffect(() => {
     filterReferrals();
   }, [referrals, startDate, endDate]);
+
+  // Easter egg: detect "gitgud" sequence
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Ignore if typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      keySequenceRef.current += e.key.toLowerCase();
+
+      // Keep only last 6 characters
+      if (keySequenceRef.current.length > 6) {
+        keySequenceRef.current = keySequenceRef.current.slice(-6);
+      }
+
+      // Check for "gitgud"
+      if (keySequenceRef.current.includes('gitgud')) {
+        keySequenceRef.current = '';
+        navigate('/secret-snake');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [navigate]);
 
   const fetchReferrals = async () => {
     try {
