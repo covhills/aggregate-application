@@ -5,6 +5,7 @@ import {
   Heading,
   VStack,
   HStack,
+  Stack,
   Text,
   Spinner,
   useToast,
@@ -27,10 +28,9 @@ import {
   Tr,
   Th,
   Td,
-  useColorModeValue,
-  Divider,
+  useColorModeValue
 } from '@chakra-ui/react';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 interface ReferralData {
@@ -93,7 +93,7 @@ export const MetricsPage = () => {
     if (startDate || endDate) {
       filtered = filtered.filter(ref => {
         if (!ref.createdAt) return false;
-        
+
         const refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate + 'T23:59:59') : null;
@@ -181,13 +181,12 @@ export const MetricsPage = () => {
   return (
     <Container maxW="container.xl" py={10}>
       <VStack spacing={6} align="stretch">
-        <Heading>Metrics Dashboard</Heading>
 
         {/* Date Range Filter */}
         <Card bg={cardBg} shadow="md">
           <CardBody>
-            <HStack spacing={4} align="end">
-              <FormControl maxW="250px">
+            <Stack direction={{ base: 'column', md: 'row' }} spacing={4} align={{ base: 'stretch', md: 'end' }}>
+              <FormControl maxW={{ base: 'full', md: '250px' }}>
                 <FormLabel>Start Date</FormLabel>
                 <Input
                   type="date"
@@ -195,7 +194,7 @@ export const MetricsPage = () => {
                   onChange={(e) => setStartDate(e.target.value)}
                 />
               </FormControl>
-              <FormControl maxW="250px">
+              <FormControl maxW={{ base: 'full', md: '250px' }}>
                 <FormLabel>End Date</FormLabel>
                 <Input
                   type="date"
@@ -208,7 +207,7 @@ export const MetricsPage = () => {
                   Clear Filters
                 </Button>
               )}
-            </HStack>
+            </Stack>
           </CardBody>
         </Card>
 
@@ -259,49 +258,18 @@ export const MetricsPage = () => {
             <Heading size="md">Lead Source Breakdown</Heading>
           </CardHeader>
           <CardBody>
-            <Table size="sm">
-              <Thead>
-                <Tr>
-                  <Th>Lead Source</Th>
-                  <Th isNumeric>Total Referrals</Th>
-                  <Th isNumeric>Admitted</Th>
-                  <Th isNumeric>Conversion Rate</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {Object.entries(leadSourceStats).map(([source, stats]) => (
-                  <Tr key={source}>
-                    <Td fontWeight="bold">{source}</Td>
-                    <Td isNumeric>{stats.total}</Td>
-                    <Td isNumeric>{stats.admitted}</Td>
-                    <Td isNumeric>{((stats.admitted / stats.total) * 100).toFixed(1)}%</Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </CardBody>
-        </Card>
-
-        {/* Referral Source Stats - Incoming */}
-        <Card bg={cardBg} shadow="md">
-          <CardHeader>
-            <Heading size="md">Referrals FROM Sources (Incoming)</Heading>
-          </CardHeader>
-          <CardBody>
-            {Object.keys(referralSourceStats).length === 0 ? (
-              <Text>No referral source data available</Text>
-            ) : (
+            <Box overflowX="auto">
               <Table size="sm">
                 <Thead>
                   <Tr>
-                    <Th>Source</Th>
+                    <Th>Lead Source</Th>
                     <Th isNumeric>Total Referrals</Th>
                     <Th isNumeric>Admitted</Th>
                     <Th isNumeric>Conversion Rate</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {Object.entries(referralSourceStats).map(([source, stats]) => (
+                  {Object.entries(leadSourceStats).map(([source, stats]) => (
                     <Tr key={source}>
                       <Td fontWeight="bold">{source}</Td>
                       <Td isNumeric>{stats.total}</Td>
@@ -311,6 +279,41 @@ export const MetricsPage = () => {
                   ))}
                 </Tbody>
               </Table>
+            </Box>
+          </CardBody>
+        </Card>
+
+        {/* Referral Source Stats - Incoming */}
+        <Card bg={cardBg} shadow="md">
+          <CardHeader>
+            <Heading size="md">Referrals FROM Sources</Heading>
+          </CardHeader>
+          <CardBody>
+            {Object.keys(referralSourceStats).length === 0 ? (
+              <Text>No referral source data available</Text>
+            ) : (
+              <Box overflowX="auto">
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Source</Th>
+                      <Th isNumeric>Total Referrals</Th>
+                      <Th isNumeric>Admitted</Th>
+                      <Th isNumeric>Conversion Rate</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {Object.entries(referralSourceStats).map(([source, stats]) => (
+                      <Tr key={source}>
+                        <Td fontWeight="bold">{source}</Td>
+                        <Td isNumeric>{stats.total}</Td>
+                        <Td isNumeric>{stats.admitted}</Td>
+                        <Td isNumeric>{((stats.admitted / stats.total) * 100).toFixed(1)}%</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
             )}
           </CardBody>
         </Card>
@@ -324,26 +327,28 @@ export const MetricsPage = () => {
             {Object.keys(referralSentToStats).length === 0 ? (
               <Text>No destination data available</Text>
             ) : (
-              <Table size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>Destination</Th>
-                    <Th isNumeric>Total Sent</Th>
-                    <Th isNumeric>Admitted</Th>
-                    <Th isNumeric>Admission Rate</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {Object.entries(referralSentToStats).map(([destination, stats]) => (
-                    <Tr key={destination}>
-                      <Td fontWeight="bold">{destination}</Td>
-                      <Td isNumeric>{stats.total}</Td>
-                      <Td isNumeric>{stats.admitted}</Td>
-                      <Td isNumeric>{((stats.admitted / stats.total) * 100).toFixed(1)}%</Td>
+              <Box overflowX="auto">
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Destination</Th>
+                      <Th isNumeric>Total Sent</Th>
+                      <Th isNumeric>Admitted</Th>
+                      <Th isNumeric>Admission Rate</Th>
                     </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+                  </Thead>
+                  <Tbody>
+                    {Object.entries(referralSentToStats).map(([destination, stats]) => (
+                      <Tr key={destination}>
+                        <Td fontWeight="bold">{destination}</Td>
+                        <Td isNumeric>{stats.total}</Td>
+                        <Td isNumeric>{stats.admitted}</Td>
+                        <Td isNumeric>{((stats.admitted / stats.total) * 100).toFixed(1)}%</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
             )}
           </CardBody>
         </Card>
@@ -351,28 +356,30 @@ export const MetricsPage = () => {
         {/* Referrals OUT */}
         <Card bg={cardBg} shadow="md">
           <CardHeader>
-            <Heading size="md">Referrals OUT (Who We Sent To)</Heading>
+            <Heading size="md">Referrals OUT</Heading>
           </CardHeader>
           <CardBody>
             {Object.keys(referralOutStats).length === 0 ? (
               <Text>No outgoing referral data available</Text>
             ) : (
-              <Table size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>Organization</Th>
-                    <Th isNumeric>Total Sent</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {Object.entries(referralOutStats).map(([org, stats]) => (
-                    <Tr key={org}>
-                      <Td fontWeight="bold">{org}</Td>
-                      <Td isNumeric>{stats.total}</Td>
+              <Box overflowX="auto">
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Organization</Th>
+                      <Th isNumeric>Total Sent</Th>
                     </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+                  </Thead>
+                  <Tbody>
+                    {Object.entries(referralOutStats).map(([org, stats]) => (
+                      <Tr key={org}>
+                        <Td fontWeight="bold">{org}</Td>
+                        <Td isNumeric>{stats.total}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
             )}
           </CardBody>
         </Card>
