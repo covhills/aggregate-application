@@ -63,10 +63,10 @@ export const Login = () => {
         <VStack spacing={8}>
           <VStack spacing={3} textAlign="center">
             <Heading size="2xl" color={headingColor}>
-              Aggregator App
+              Covenant Hills
             </Heading>
             <Text fontSize="lg" color={textColor}>
-              Referral Management System
+              Management System
             </Text>
           </VStack>
 
