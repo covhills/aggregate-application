@@ -66,9 +66,9 @@ const AppHeader = () => {
           {/* Desktop Layout */}
           <HStack justify="space-between" align="center" display={{ base: 'none', md: 'flex' }}>
             <HStack spacing={4} align="center">
-              <Box fontSize="xl" fontWeight="bold">
-                Aggregator App
-              </Box>
+              {/* <Box fontSize="xl" fontWeight="bold">
+                Covenant Hills
+              </Box> */}
               {user && (
                 <HStack spacing={2}>
                   <Button
@@ -120,9 +120,9 @@ const AppHeader = () => {
           {/* Mobile Layout */}
           <VStack spacing={3} display={{ base: 'flex', md: 'none' }}>
             <HStack justify="space-between" align="center" width="full">
-              <Box fontSize="lg" fontWeight="bold">
+              {/* <Box fontSize="lg" fontWeight="bold">
                 Aggregator App
-              </Box>
+              </Box> */}
               <HStack spacing={2}>
                 <ColorModeToggle />
                 {user && (
