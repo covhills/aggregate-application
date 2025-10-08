@@ -76,6 +76,7 @@ interface ReferralData {
   admitted: boolean;
   createdAt: any;
   createdBy: string;
+  outreachRep?: string;
 }
 
 export const AdminPage = () => {
@@ -101,6 +102,8 @@ export const AdminPage = () => {
   const [filterSentTo, setFilterSentTo] = useState('');
   const [filterLeadSource, setFilterLeadSource] = useState('');
   const [filterReferralSource, setFilterReferralSource] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [filterInsurance, setFilterInsurance] = useState('');
 
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
@@ -225,6 +228,17 @@ export const AdminPage = () => {
   const handleUpdate = async () => {
     if (!selectedReferral || !editData) return;
 
+    if (editData.leadSource === 'Outreach' && !editData.outreachRep) {
+      toast({
+        title: 'Error',
+        description: 'Outreach Rep is required when Lead Source is Outreach',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     try {
       const docRef = doc(db, 'referrals', selectedReferral.id);
       await updateDoc(docRef, editData);
@@ -298,9 +312,11 @@ export const AdminPage = () => {
     setFilterSentTo('');
     setFilterLeadSource('');
     setFilterReferralSource('');
+    setFilterName('');
+    setFilterInsurance('');
   };
 
-  const hasActiveFilters = filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterReferralSource;
+  const hasActiveFilters = filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterReferralSource || filterName || filterInsurance;
 
   const totalPages = Math.ceil(totalCount / pageSize);
   const startRecord = (currentPage - 1) * pageSize + 1;
@@ -313,6 +329,11 @@ export const AdminPage = () => {
     if (filterSentTo && ref.referralSentTo !== filterSentTo) return false;
     if (filterLeadSource && ref.leadSource !== filterLeadSource) return false;
     if (filterReferralSource && !ref.referralSource?.toLowerCase().includes(filterReferralSource.toLowerCase())) return false;
+    if (filterName) {
+      const fullName = `${ref.firstName} ${ref.lastName}`.toLowerCase();
+      if (!fullName.includes(filterName.toLowerCase())) return false;
+    }
+    if (filterInsurance && !ref.insuranceCompany?.toLowerCase().includes(filterInsurance.toLowerCase())) return false;
     return true;
   });
 
@@ -359,7 +380,27 @@ export const AdminPage = () => {
                   )}
                 </HStack>
 
-                <Stack direction={{ base: 'column', md: 'row' }} spacing={4}>
+                <Stack direction={{ base: 'column', md: 'row' }} spacing={4} flexWrap="wrap">
+                  <FormControl maxW={{ base: 'full', md: '200px' }}>
+                    <FormLabel fontSize="sm">Name</FormLabel>
+                    <Input
+                      value={filterName}
+                      onChange={e => setFilterName(e.target.value)}
+                      size="sm"
+                      placeholder="Search..."
+                    />
+                  </FormControl>
+
+                  <FormControl maxW={{ base: 'full', md: '200px' }}>
+                    <FormLabel fontSize="sm">Insurance</FormLabel>
+                    <Input
+                      value={filterInsurance}
+                      onChange={e => setFilterInsurance(e.target.value)}
+                      size="sm"
+                      placeholder="Search..."
+                    />
+                  </FormControl>
+
                   <FormControl maxW={{ base: 'full', md: '200px' }}>
                     <FormLabel fontSize="sm">Program</FormLabel>
                     <Select
@@ -439,7 +480,7 @@ export const AdminPage = () => {
                 <Box flex="1" textAlign="left">
                   <HStack justify="space-between" width="full" pr={2}>
                     <Heading size="sm">
-                      Filters {hasActiveFilters && `(${[filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterReferralSource].filter(Boolean).length})`}
+                      Filters {hasActiveFilters && `(${[filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterReferralSource, filterName, filterInsurance].filter(Boolean).length})`}
                     </Heading>
                   </HStack>
                 </Box>
@@ -452,6 +493,26 @@ export const AdminPage = () => {
                       Clear All Filters
                     </Button>
                   )}
+
+                  <FormControl>
+                    <FormLabel fontSize="sm">Name</FormLabel>
+                    <Input
+                      value={filterName}
+                      onChange={e => setFilterName(e.target.value)}
+                      size="sm"
+                      placeholder="Search..."
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel fontSize="sm">Insurance</FormLabel>
+                    <Input
+                      value={filterInsurance}
+                      onChange={e => setFilterInsurance(e.target.value)}
+                      size="sm"
+                      placeholder="Search..."
+                    />
+                  </FormControl>
 
                   <FormControl>
                     <FormLabel fontSize="sm">Program</FormLabel>
@@ -709,6 +770,16 @@ export const AdminPage = () => {
                   </Select>
                 </FormControl>
 
+                {editData.leadSource === 'Outreach' && (
+                  <FormControl isRequired>
+                    <FormLabel>Outreach Rep</FormLabel>
+                    <Input
+                      value={editData.outreachRep || ''}
+                      onChange={(e) => setEditData({ ...editData, outreachRep: e.target.value })}
+                    />
+                  </FormControl>
+                )}
+
                 <FormControl>
                   <FormLabel>Referral Source</FormLabel>
                   <Input
@@ -796,6 +867,12 @@ export const AdminPage = () => {
                   <Text fontWeight="bold">Lead Source:</Text>
                   <Text>{selectedReferral?.leadSource}</Text>
                 </Box>
+                {selectedReferral?.leadSource === 'Outreach' && (
+                  <Box>
+                    <Text fontWeight="bold">Outreach Rep:</Text>
+                    <Text>{selectedReferral?.outreachRep || '-'}</Text>
+                  </Box>
+                )}
                 <Box>
                   <Text fontWeight="bold">Referral Source:</Text>
                   <Text>{selectedReferral?.referralSource || '-'}</Text>

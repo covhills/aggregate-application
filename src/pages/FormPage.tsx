@@ -40,6 +40,7 @@ interface FormData {
   program: string;
   referralSentTo: string;
   admitted: boolean;
+  outreachRep?: string;
 }
 
 export const FormPage = () => {
@@ -62,6 +63,7 @@ export const FormPage = () => {
     program: '',
     referralSentTo: '',
     admitted: false,
+    outreachRep: '',
   });
 
   const cardBg = useColorModeValue('white', 'gray.700');
@@ -77,6 +79,17 @@ export const FormPage = () => {
       toast({
         title: 'Error',
         description: 'Please fill in all required fields',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (formData.leadSource === 'Outreach' && !formData.outreachRep) {
+      toast({
+        title: 'Error',
+        description: 'Outreach Rep is required when Lead Source is Outreach',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -112,6 +125,7 @@ export const FormPage = () => {
         program: '',
         referralSentTo: '',
         admitted: false,
+        outreachRep: '',
       });
     } catch (error) {
       console.error('Error creating record:', error);
@@ -195,11 +209,18 @@ export const FormPage = () => {
 
         for (let i = start; i < end; i++) {
           const row = rows[i];
-          
+
           // Validate required fields
           if (!row.firstName || !row.lastName || !row.leadSource) {
             failedCount++;
             errors.push(`Row ${i + 2}: Missing required fields (firstName, lastName, or leadSource)`);
+            continue;
+          }
+
+          // Validate outreachRep when leadSource is Outreach
+          if (row.leadSource === 'Outreach' && !row.outreachRep) {
+            failedCount++;
+            errors.push(`Row ${i + 2}: outreachRep is required when leadSource is Outreach`);
             continue;
           }
 
@@ -217,6 +238,7 @@ export const FormPage = () => {
             program: row.program || '',
             referralSentTo: row.referralSentTo || '',
             admitted: admitted,
+            outreachRep: row.outreachRep || '',
             createdAt: serverTimestamp(),
             createdBy: user?.email || 'unknown',
           });
@@ -314,6 +336,17 @@ export const FormPage = () => {
                   </Select>
                 </FormControl>
 
+                {formData.leadSource === 'Outreach' && (
+                  <FormControl isRequired>
+                    <FormLabel>Outreach Rep</FormLabel>
+                    <Input
+                      value={formData.outreachRep || ''}
+                      onChange={(e) => handleChange('outreachRep', e.target.value)}
+                      placeholder="Enter outreach rep name"
+                    />
+                  </FormControl>
+                )}
+
                 <FormControl>
                   <FormLabel>Referral Source</FormLabel>
                   <Input
@@ -401,11 +434,15 @@ export const FormPage = () => {
           <ModalBody>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Upload a CSV file with the following columns: firstName, lastName, leadSource, referralSource, referralOut, insuranceCompany, program, referralSentTo, admitted
+                Upload a CSV file with the following columns: firstName, lastName, leadSource, outreachRep, referralSource, referralOut, insuranceCompany, program, referralSentTo, admitted
               </Text>
-              
+
               <Text fontSize="sm" fontWeight="bold">
                 Required fields: firstName, lastName, leadSource
+              </Text>
+
+              <Text fontSize="sm" fontWeight="bold" color="orange.500">
+                Note: outreachRep is required when leadSource is "Outreach"
               </Text>
 
               <FormControl>
