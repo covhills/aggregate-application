@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChakraProvider, Box, Container, HStack, Button, useColorModeValue, VStack, useToast, Image } from '@chakra-ui/react';
+import { ChakraProvider, Box, Container, HStack, Button, useColorModeValue, VStack, useToast, Image, Spinner, Text } from '@chakra-ui/react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -11,6 +11,23 @@ import { ColorModeToggle } from './components/ColorModeToggle';
 import theme from './theme';
 import { signOut } from 'firebase/auth';
 import { auth } from './config/firebase';
+
+const RootRedirect = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+        <VStack spacing={4}>
+          <Spinner size="xl" color="blue.500" />
+          <Text>Loading...</Text>
+        </VStack>
+      </Box>
+    );
+  }
+
+  return <Navigate to={user ? "/form" : "/login"} replace />;
+};
 
 const AppHeader = () => {
   const headerBg = useColorModeValue('white', 'gray.900');
@@ -196,7 +213,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/" element={<Navigate to="/form" replace />} />
+            <Route path="/" element={<RootRedirect />} />
+            <Route path="*" element={<RootRedirect />} />
           </Routes>
         </Router>
       </AuthProvider>
