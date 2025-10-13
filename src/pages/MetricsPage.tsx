@@ -4,7 +4,6 @@ import {
   Container,
   Heading,
   VStack,
-  Stack,
   Text,
   Spinner,
   useToast,
@@ -27,6 +26,13 @@ import {
   Tr,
   Th,
   Td,
+  Select,
+  SimpleGrid,
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
   useColorModeValue
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
@@ -40,8 +46,12 @@ interface ReferralData {
   leadSource: string;
   referralSource: string;
   referralOut: string;
+  referralType: string;
   referralSentTo: string;
-  admitted: boolean;
+  insuranceCompany: string;
+  levelOfCare: string;
+  admitted: string | boolean;
+  outreachRep?: string;
   createdAt: any;
 }
 
@@ -55,6 +65,17 @@ export const MetricsPage = () => {
   const [filteredReferrals, setFilteredReferrals] = useState<ReferralData[]>([]);
   const keySequenceRef = useRef<string>('');
 
+  // Additional filters
+  const [filterLeadSource, setFilterLeadSource] = useState('');
+  const [filterOutreachRep, setFilterOutreachRep] = useState('');
+  const [filterReferralSource, setFilterReferralSource] = useState('');
+  const [filterReferralOut, setFilterReferralOut] = useState('');
+  const [filterReferralType, setFilterReferralType] = useState('');
+  const [filterInsuranceCompany, setFilterInsuranceCompany] = useState('');
+  const [filterLevelOfCare, setFilterLevelOfCare] = useState('');
+  const [filterReferralSentTo, setFilterReferralSentTo] = useState('');
+  const [filterAdmitted, setFilterAdmitted] = useState('');
+
   const cardBg = useColorModeValue('white', 'gray.700');
   const statBg = useColorModeValue('blue.50', 'blue.900');
 
@@ -64,7 +85,7 @@ export const MetricsPage = () => {
 
   useEffect(() => {
     filterReferrals();
-  }, [referrals, startDate, endDate]);
+  }, [referrals, startDate, endDate, filterLeadSource, filterOutreachRep, filterReferralSource, filterReferralOut, filterReferralType, filterInsuranceCompany, filterLevelOfCare, filterReferralSentTo, filterAdmitted]);
 
   // Easter egg: detect "gitgud" sequence
   useEffect(() => {
@@ -118,6 +139,7 @@ export const MetricsPage = () => {
   const filterReferrals = () => {
     let filtered = [...referrals];
 
+    // Date range filter
     if (startDate || endDate) {
       filtered = filtered.filter(ref => {
         if (!ref.createdAt) return false;
@@ -137,17 +159,89 @@ export const MetricsPage = () => {
       });
     }
 
+    // Lead Source filter
+    if (filterLeadSource) {
+      filtered = filtered.filter(ref => ref.leadSource === filterLeadSource);
+    }
+
+    // Outreach Rep filter (only when Lead Source is Outreach)
+    if (filterOutreachRep) {
+      filtered = filtered.filter(ref => ref.outreachRep === filterOutreachRep);
+    }
+
+    // Referral Source filter
+    if (filterReferralSource) {
+      filtered = filtered.filter(ref => ref.referralSource === filterReferralSource);
+    }
+
+    // Referral Out filter
+    if (filterReferralOut) {
+      filtered = filtered.filter(ref => ref.referralOut === filterReferralOut);
+    }
+
+    // Referral Type filter
+    if (filterReferralType) {
+      filtered = filtered.filter(ref => ref.referralType === filterReferralType);
+    }
+
+    // Insurance Company filter
+    if (filterInsuranceCompany) {
+      filtered = filtered.filter(ref => ref.insuranceCompany === filterInsuranceCompany);
+    }
+
+    // Level of Care filter
+    if (filterLevelOfCare) {
+      filtered = filtered.filter(ref => ref.levelOfCare === filterLevelOfCare);
+    }
+
+    // Referral Sent To filter
+    if (filterReferralSentTo) {
+      filtered = filtered.filter(ref => ref.referralSentTo === filterReferralSentTo);
+    }
+
+    // Admitted filter
+    if (filterAdmitted) {
+      filtered = filtered.filter(ref => {
+        const admitted = typeof ref.admitted === 'string' ? ref.admitted : (ref.admitted ? 'Yes' : 'No');
+        return admitted === filterAdmitted;
+      });
+    }
+
     setFilteredReferrals(filtered);
   };
 
   const clearFilters = () => {
     setStartDate('');
     setEndDate('');
+    setFilterLeadSource('');
+    setFilterOutreachRep('');
+    setFilterReferralSource('');
+    setFilterReferralOut('');
+    setFilterReferralType('');
+    setFilterInsuranceCompany('');
+    setFilterLevelOfCare('');
+    setFilterReferralSentTo('');
+    setFilterAdmitted('');
   };
+
+  // Get unique values for filters
+  const uniqueLeadSources = Array.from(new Set(referrals.map(r => r.leadSource).filter(Boolean))).sort();
+  const uniqueOutreachReps = Array.from(new Set(referrals.filter(r => r.leadSource === 'Outreach' && r.outreachRep).map(r => r.outreachRep!))).sort();
+  const uniqueReferralSources = Array.from(new Set(referrals.map(r => r.referralSource).filter(Boolean))).sort();
+  const uniqueReferralOuts = Array.from(new Set(referrals.map(r => r.referralOut).filter(Boolean))).sort();
+  const uniqueReferralTypes = Array.from(new Set(referrals.map(r => r.referralType).filter(Boolean))).sort();
+  const uniqueInsuranceCompanies = Array.from(new Set(referrals.map(r => r.insuranceCompany).filter(Boolean))).sort();
+  const uniqueLevelOfCare = Array.from(new Set(referrals.map(r => r.levelOfCare).filter(Boolean))).sort();
+  const uniqueReferralSentTo = Array.from(new Set(referrals.map(r => r.referralSentTo).filter(Boolean))).sort();
 
   // Calculate metrics
   const totalReferrals = filteredReferrals.length;
-  const totalAdmitted = filteredReferrals.filter(r => r.admitted).length;
+  const totalAdmitted = filteredReferrals.filter(r => {
+    if (typeof r.admitted === 'string') {
+      return r.admitted === 'Yes';
+    }
+    return r.admitted === true;
+  }).length;
   const conversionRate = totalReferrals > 0 ? ((totalAdmitted / totalReferrals) * 100).toFixed(1) : '0';
 
   // Group by referral source
@@ -157,7 +251,8 @@ export const MetricsPage = () => {
       acc[source] = { total: 0, admitted: 0 };
     }
     acc[source].total += 1;
-    if (ref.admitted) acc[source].admitted += 1;
+    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    if (isAdmitted) acc[source].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);
 
@@ -168,7 +263,8 @@ export const MetricsPage = () => {
       acc[destination] = { total: 0, admitted: 0 };
     }
     acc[destination].total += 1;
-    if (ref.admitted) acc[destination].admitted += 1;
+    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    if (isAdmitted) acc[destination].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);
 
@@ -191,7 +287,8 @@ export const MetricsPage = () => {
       acc[source] = { total: 0, admitted: 0 };
     }
     acc[source].total += 1;
-    if (ref.admitted) acc[source].admitted += 1;
+    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    if (isAdmitted) acc[source].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);
 
@@ -210,34 +307,173 @@ export const MetricsPage = () => {
     <Container maxW="container.xl" py={10}>
       <VStack spacing={6} align="stretch">
 
-        {/* Date Range Filter */}
-        <Card bg={cardBg} shadow="md">
-          <CardBody>
-            <Stack direction={{ base: 'column', md: 'row' }} spacing={4} align={{ base: 'stretch', md: 'end' }}>
-              <FormControl maxW={{ base: 'full', md: '250px' }}>
-                <FormLabel>Start Date</FormLabel>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </FormControl>
-              <FormControl maxW={{ base: 'full', md: '250px' }}>
-                <FormLabel>End Date</FormLabel>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-              </FormControl>
-              {(startDate || endDate) && (
-                <Button onClick={clearFilters}>
-                  Clear Filters
-                </Button>
-              )}
-            </Stack>
-          </CardBody>
-        </Card>
+        {/* Filters */}
+        <Accordion allowToggle defaultIndex={[0]}>
+          <AccordionItem border="none">
+            <Card bg={cardBg} shadow="md">
+              <AccordionButton p={0} _hover={{ bg: 'transparent' }}>
+                <CardHeader flex="1" textAlign="left">
+                  <Heading size="md">
+                    Filters
+                    <AccordionIcon ml={2} />
+                  </Heading>
+                </CardHeader>
+              </AccordionButton>
+              <AccordionPanel pb={4}>
+                <CardBody pt={0}>
+                  <VStack spacing={4} align="stretch">
+                    {/* Date Range */}
+                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                      <FormControl>
+                        <FormLabel>Start Date</FormLabel>
+                        <Input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>End Date</FormLabel>
+                        <Input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                        />
+                      </FormControl>
+                    </SimpleGrid>
+
+                    {/* Additional Filters */}
+                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                      <FormControl>
+                        <FormLabel>Lead Source</FormLabel>
+                        <Select
+                          value={filterLeadSource}
+                          onChange={(e) => setFilterLeadSource(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueLeadSources.map(source => (
+                            <option key={source} value={source}>{source}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      {filterLeadSource === 'Outreach' && uniqueOutreachReps.length > 0 && (
+                        <FormControl>
+                          <FormLabel>Outreach Rep</FormLabel>
+                          <Select
+                            value={filterOutreachRep}
+                            onChange={(e) => setFilterOutreachRep(e.target.value)}
+                            placeholder="All"
+                          >
+                            {uniqueOutreachReps.map(rep => (
+                              <option key={rep} value={rep}>{rep}</option>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+
+                      <FormControl>
+                        <FormLabel>Referral Source</FormLabel>
+                        <Select
+                          value={filterReferralSource}
+                          onChange={(e) => setFilterReferralSource(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueReferralSources.map(source => (
+                            <option key={source} value={source}>{source}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Referral Out</FormLabel>
+                        <Select
+                          value={filterReferralOut}
+                          onChange={(e) => setFilterReferralOut(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueReferralOuts.map(out => (
+                            <option key={out} value={out}>{out}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Referral Type</FormLabel>
+                        <Select
+                          value={filterReferralType}
+                          onChange={(e) => setFilterReferralType(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueReferralTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Insurance Company</FormLabel>
+                        <Select
+                          value={filterInsuranceCompany}
+                          onChange={(e) => setFilterInsuranceCompany(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueInsuranceCompanies.map(company => (
+                            <option key={company} value={company}>{company}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Level of Care</FormLabel>
+                        <Select
+                          value={filterLevelOfCare}
+                          onChange={(e) => setFilterLevelOfCare(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueLevelOfCare.map(level => (
+                            <option key={level} value={level}>{level}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Referral Sent To</FormLabel>
+                        <Select
+                          value={filterReferralSentTo}
+                          onChange={(e) => setFilterReferralSentTo(e.target.value)}
+                          placeholder="All"
+                        >
+                          {uniqueReferralSentTo.map(dest => (
+                            <option key={dest} value={dest}>{dest}</option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Admitted</FormLabel>
+                        <Select
+                          value={filterAdmitted}
+                          onChange={(e) => setFilterAdmitted(e.target.value)}
+                          placeholder="All"
+                        >
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                          <option value="Pending">Pending</option>
+                          <option value="In process">In process</option>
+                        </Select>
+                      </FormControl>
+                    </SimpleGrid>
+
+                    <Button onClick={clearFilters} colorScheme="gray" size="sm" alignSelf="flex-start">
+                      Clear All Filters
+                    </Button>
+                  </VStack>
+                </CardBody>
+              </AccordionPanel>
+            </Card>
+          </AccordionItem>
+        </Accordion>
 
         {/* Overview Stats */}
         <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6}>

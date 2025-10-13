@@ -26,20 +26,24 @@ import {
   List,
   ListItem,
 } from '@chakra-ui/react';
-import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface FormData {
   firstName: string;
   lastName: string;
+  callInDate: string;
+  createdDate: string;
   leadSource: string;
   referralSource: string;
   referralOut: string;
+  referralType: string;
   insuranceCompany: string;
-  program: string;
+  privatePay: boolean;
+  levelOfCare: string;
   referralSentTo: string;
-  admitted: boolean;
+  admitted: string;
   outreachRep?: string;
 }
 
@@ -56,13 +60,17 @@ export const FormPage = () => {
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
+    callInDate: '',
+    createdDate: '',
     leadSource: 'Insurance',
     referralSource: '',
     referralOut: '',
+    referralType: '',
     insuranceCompany: '',
-    program: '',
+    privatePay: false,
+    levelOfCare: '',
     referralSentTo: '',
-    admitted: false,
+    admitted: '',
     outreachRep: '',
   });
 
@@ -118,13 +126,17 @@ export const FormPage = () => {
       setFormData({
         firstName: '',
         lastName: '',
+        callInDate: '',
+        createdDate: '',
         leadSource: 'Insurance',
         referralSource: '',
         referralOut: '',
+        referralType: '',
         insuranceCompany: '',
-        program: '',
+        privatePay: false,
+        levelOfCare: '',
         referralSentTo: '',
-        admitted: false,
+        admitted: '',
         outreachRep: '',
       });
     } catch (error) {
@@ -145,11 +157,33 @@ export const FormPage = () => {
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
 
-    const headers = lines[0].split(',').map(h => h.trim());
+    // Parse CSV handling quoted values
+    const parseCSVLine = (line: string): string[] => {
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim());
+      return values;
+    };
+
+    const headers = parseCSVLine(lines[0]);
     const rows = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
+      const values = parseCSVLine(lines[i]);
       const row: any = {};
       headers.forEach((header, index) => {
         row[header] = values[index] || '';
@@ -158,6 +192,61 @@ export const FormPage = () => {
     }
 
     return rows;
+  };
+
+  const cleanFieldValue = (value: string): string => {
+    if (!value) return value;
+    // Strip "Accounts::::" prefix if present
+    return value.replace(/^Accounts::::/, '').trim();
+  };
+
+  const mapCSVRowToFormData = (row: any): any => {
+    // Map various column name formats to our form field names
+    const mapped: any = {};
+
+    // First Name mapping
+    mapped.firstName = row.firstName || row['First Name'] || row['first name'] || '';
+
+    // Last Name mapping
+    mapped.lastName = row.lastName || row['Last Name'] || row['last name'] || '';
+
+    // Call in Date mapping
+    mapped.callInDate = row.callInDate || row['Call in Date'] || row['call in date'] || '';
+
+    // Created Date mapping (from Created Time in exports)
+    mapped.createdDate = row.createdDate || row['Created Date'] || row['Created Time'] || row['created time'] || '';
+
+    // Lead Source mapping
+    mapped.leadSource = row.leadSource || row['Lead Source'] || row['lead source'] || '';
+
+    // Referral Source mapping (clean "Accounts::::" prefix)
+    mapped.referralSource = cleanFieldValue(row.referralSource || row['Referral Source'] || row['referral source'] || '');
+
+    // Referral Out mapping (clean "Accounts::::" prefix)
+    mapped.referralOut = cleanFieldValue(row.referralOut || row['Referral Out'] || row['referral out'] || '');
+
+    // Referral Type mapping
+    mapped.referralType = row.referralType || row['Referral Type'] || row['referral type'] || '';
+
+    // Insurance Company mapping
+    mapped.insuranceCompany = row.insuranceCompany || row['Insurance Company'] || row['insurance company'] || '';
+
+    // Private Pay mapping
+    mapped.privatePay = row.privatePay || row['Private Pay'] || row['private pay'] || '';
+
+    // Level of Care mapping (could be Program in old format)
+    mapped.levelOfCare = row.levelOfCare || row['Level of Care'] || row['level of care'] || row.program || row.Program || '';
+
+    // Referral Sent To mapping
+    mapped.referralSentTo = row.referralSentTo || row['Referral Sent To'] || row['referral sent to'] || '';
+
+    // Admitted mapping
+    mapped.admitted = row.admitted || row.Admitted || '';
+
+    // Outreach Rep mapping
+    mapped.outreachRep = row.outreachRep || row['Outreach Rep'] || row['outreach rep'] || '';
+
+    return mapped;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,13 +297,19 @@ export const FormPage = () => {
         const end = Math.min(start + batchSize, rows.length);
 
         for (let i = start; i < end; i++) {
-          const row = rows[i];
+          const rawRow = rows[i];
+          const row = mapCSVRowToFormData(rawRow);
 
           // Validate required fields
-          if (!row.firstName || !row.lastName || !row.leadSource) {
+          if (!row.firstName || !row.lastName) {
             failedCount++;
-            errors.push(`Row ${i + 2}: Missing required fields (firstName, lastName, or leadSource)`);
+            errors.push(`Row ${i + 2}: Missing required fields (firstName or lastName)`);
             continue;
+          }
+
+          // Set default leadSource if missing
+          if (!row.leadSource) {
+            row.leadSource = 'Direct';
           }
 
           // Validate outreachRep when leadSource is Outreach
@@ -224,22 +319,49 @@ export const FormPage = () => {
             continue;
           }
 
-          // Convert admitted field
-          const admitted = row.admitted?.toLowerCase() === 'true' || row.admitted === '1' || row.admitted?.toLowerCase() === 'yes';
+          // Convert privatePay field
+          const privatePay = row.privatePay?.toLowerCase() === 'true' || row.privatePay === '1' || row.privatePay?.toLowerCase() === 'yes';
+
+          // Parse createdDate from CSV and convert to Firestore Timestamp
+          let createdAtTimestamp;
+          if (row.createdDate) {
+            try {
+              // Handle formats like "01-01-2025 14:16:44" or "2025-01-01"
+              let dateStr = row.createdDate;
+              // Convert MM-DD-YYYY to YYYY-MM-DD if needed
+              if (/^\d{2}-\d{2}-\d{4}/.test(dateStr)) {
+                dateStr = dateStr.replace(/(\d{2})-(\d{2})-(\d{4})/, '$3-$1-$2');
+              }
+              const parsedDate = new Date(dateStr);
+              if (!isNaN(parsedDate.getTime())) {
+                createdAtTimestamp = Timestamp.fromDate(parsedDate);
+              } else {
+                createdAtTimestamp = serverTimestamp();
+              }
+            } catch (e) {
+              createdAtTimestamp = serverTimestamp();
+            }
+          } else {
+            createdAtTimestamp = serverTimestamp();
+          }
 
           const docRef = doc(collection(db, 'referrals'));
           batch.set(docRef, {
             firstName: row.firstName || '',
             lastName: row.lastName || '',
-            leadSource: row.leadSource || '',
+            callInDate: row.callInDate || '',
+            createdDate: row.createdDate || '',
+            leadSource: row.leadSource || 'Direct',
             referralSource: row.referralSource || '',
             referralOut: row.referralOut || '',
+            referralType: row.referralType || '',
             insuranceCompany: row.insuranceCompany || '',
-            program: row.program || '',
+            privatePay: privatePay,
+            levelOfCare: row.levelOfCare || '',
             referralSentTo: row.referralSentTo || '',
-            admitted: admitted,
+            admitted: row.admitted || '',
             outreachRep: row.outreachRep || '',
-            createdAt: serverTimestamp(),
+            createdAt: createdAtTimestamp,
             createdBy: user?.email || 'unknown',
           });
           successCount++;
@@ -323,6 +445,15 @@ export const FormPage = () => {
                   />
                 </FormControl>
 
+                <FormControl>
+                  <FormLabel>Call in Date</FormLabel>
+                  <Input
+                    type="date"
+                    value={formData.callInDate}
+                    onChange={(e) => handleChange('callInDate', e.target.value)}
+                  />
+                </FormControl>
+
                 <FormControl isRequired>
                   <FormLabel>Lead Source</FormLabel>
                   <Select
@@ -366,6 +497,24 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
+                  <FormLabel>Referral Type</FormLabel>
+                  <Select
+                    value={formData.referralType}
+                    onChange={(e) => handleChange('referralType', e.target.value)}
+                    placeholder="Select referral type"
+                  >
+                    <option value="Treatment center">Treatment center</option>
+                    <option value="Internet">Internet</option>
+                    <option value="Therapist">Therapist</option>
+                    <option value="Interventionist">Interventionist</option>
+                    <option value="Kaiser">Kaiser</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="Alumni">Alumni</option>
+                    <option value="Re-admit">Re-admit</option>
+                  </Select>
+                </FormControl>
+
+                <FormControl>
                   <FormLabel>Insurance Company</FormLabel>
                   <Input
                     value={formData.insuranceCompany}
@@ -375,11 +524,20 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Program</FormLabel>
+                  <Checkbox
+                    isChecked={formData.privatePay}
+                    onChange={(e) => handleChange('privatePay', e.target.checked)}
+                  >
+                    Private Pay
+                  </Checkbox>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Level of Care</FormLabel>
                   <Select
-                    value={formData.program}
-                    onChange={(e) => handleChange('program', e.target.value)}
-                    placeholder="Select program"
+                    value={formData.levelOfCare}
+                    onChange={(e) => handleChange('levelOfCare', e.target.value)}
+                    placeholder="Select level of care"
                   >
                     <option value="DTX">DTX</option>
                     <option value="RTC">RTC</option>
@@ -401,12 +559,17 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <Checkbox
-                    isChecked={formData.admitted}
-                    onChange={(e) => handleChange('admitted', e.target.checked)}
+                  <FormLabel>Admitted</FormLabel>
+                  <Select
+                    value={formData.admitted}
+                    onChange={(e) => handleChange('admitted', e.target.value)}
+                    placeholder="Select status"
                   >
-                    Admitted
-                  </Checkbox>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="Pending">Pending</option>
+                    <option value="In process">In process</option>
+                  </Select>
                 </FormControl>
 
                 <Button
@@ -434,11 +597,15 @@ export const FormPage = () => {
           <ModalBody>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Upload a CSV file with the following columns: firstName, lastName, leadSource, outreachRep, referralSource, referralOut, insuranceCompany, program, referralSentTo, admitted
+                Upload a CSV file with columns like: firstName (or "First Name"), lastName (or "Last Name"), callInDate, createdDate (or "Created Time"), leadSource (or "Lead Source"), referralSource (or "Referral Source"), referralOut (or "Referral Out"), referralType, insuranceCompany (or "Insurance Company"), privatePay, levelOfCare, referralSentTo, admitted, outreachRep
               </Text>
 
               <Text fontSize="sm" fontWeight="bold">
-                Required fields: firstName, lastName, leadSource
+                Required fields: firstName/First Name, lastName/Last Name
+              </Text>
+
+              <Text fontSize="sm" color="gray.500">
+                Missing fields will use default values. If leadSource is missing, it will default to "Direct".
               </Text>
 
               <Text fontSize="sm" fontWeight="bold" color="orange.500">
