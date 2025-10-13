@@ -27,3 +27,9 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Test CSV files
+test.csv
+Leads.csv
+Leads.csv.backup
+*.csv.backup
