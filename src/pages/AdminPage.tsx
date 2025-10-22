@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -55,11 +55,7 @@ import {
   query,
   orderBy,
   limit,
-  startAfter,
-  endBefore,
-  limitToLast,
-  QueryDocumentSnapshot,
-  DocumentData
+  where
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -83,18 +79,17 @@ export const AdminPage = () => {
   const toast = useToast();
   const [referrals,
     setReferrals] = useState<ReferralData[]>([]);
+  const [allReferrals, setAllReferrals] = useState<ReferralData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [selectedReferral, setSelectedReferral] = useState<ReferralData | null>(null);
   const [editData, setEditData] = useState<Partial<ReferralData>>({});
   const [sortField, setSortField] = useState<'name' | 'date'>('date');
   const [sortAsc, setSortAsc] = useState(false);
 
-  // Pagination state
-  const [pageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  // Data state
+  const [isFiltered, setIsFiltered] = useState(false);
 
   // Filter state
   const [filterProgram, setFilterProgram] = useState('');
@@ -113,64 +108,101 @@ export const AdminPage = () => {
   const cardBg = useColorModeValue('white', 'gray.700');
 
   useEffect(() => {
-    fetchTotalCount();
     fetchReferrals();
   }, []);
 
-  const fetchTotalCount = async () => {
+
+  const fetchAllReferralsWithFilters = async () => {
+    setDataLoading(true);
     try {
-      const q = query(collection(db, 'referrals'));
+      let q = query(collection(db, 'referrals'));
+
+      // Apply filters at database level
+      if (filterProgram) {
+        q = query(q, where('program', '==', filterProgram));
+      }
+      if (filterAdmitted !== '') {
+        q = query(q, where('admitted', '==', filterAdmitted === 'true'));
+      }
+      if (filterSentTo) {
+        q = query(q, where('referralSentTo', '==', filterSentTo));
+      }
+      if (filterLeadSource) {
+        q = query(q, where('leadSource', '==', filterLeadSource));
+      }
+
+      // Apply ordering
+      q = query(q, orderBy('createdAt', 'desc'));
+
       const querySnapshot = await getDocs(q);
-      setTotalCount(querySnapshot.size);
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as ReferralData));
+
+      // Apply client-side filters that can't be done with Firestore
+      let filteredData = data;
+
+      if (filterReferralSource) {
+        filteredData = filteredData.filter(ref =>
+          ref.referralSource?.toLowerCase().includes(filterReferralSource.toLowerCase())
+        );
+      }
+      if (filterName) {
+        filteredData = filteredData.filter(ref => {
+          const fullName = `${ref.firstName} ${ref.lastName}`.toLowerCase();
+          return fullName.includes(filterName.toLowerCase());
+        });
+      }
+      if (filterInsurance) {
+        filteredData = filteredData.filter(ref =>
+          ref.insuranceCompany?.toLowerCase().includes(filterInsurance.toLowerCase())
+        );
+      }
+
+      setAllReferrals(filteredData);
+      setIsFiltered(true);
+
+      // Show ALL filtered results without pagination
+      setReferrals(filteredData);
+
     } catch (error) {
-      console.error('Error fetching count:', error);
+      console.error('Error fetching filtered referrals:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load filtered referrals',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setDataLoading(false);
     }
   };
 
-  const fetchReferrals = async (direction?: 'next' | 'prev') => {
-    setLoading(true);
-    try {
-      let q;
+  const fetchReferrals = async () => {
+    if (initialLoad) {
+      setLoading(true);
+    } else {
+      setDataLoading(true);
+    }
 
-      if (direction === 'next' && lastDoc) {
-        q = query(
-          collection(db, 'referrals'),
-          orderBy('createdAt', 'desc'),
-          startAfter(lastDoc),
-          limit(pageSize)
-        );
-      } else if (direction === 'prev' && firstDoc) {
-        q = query(
-          collection(db, 'referrals'),
-          orderBy('createdAt', 'desc'),
-          endBefore(firstDoc),
-          limitToLast(pageSize)
-        );
-      } else {
-        // First page or no direction
-        q = query(
-          collection(db, 'referrals'),
-          orderBy('createdAt', 'desc'),
-          limit(pageSize)
-        );
-      }
+    try {
+      // Get only the most recent 20 results
+      const q = query(
+        collection(db, 'referrals'),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
 
       const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.docs.length > 0) {
-        setFirstDoc(querySnapshot.docs[0]);
-        setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
-      } else {
-        setFirstDoc(null);
-        setLastDoc(null);
-      }
-
       const data = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as ReferralData));
 
       setReferrals(data);
+      setInitialLoad(false);
     } catch (error) {
       console.error('Error fetching referrals:', error);
       toast({
@@ -182,6 +214,7 @@ export const AdminPage = () => {
       });
     } finally {
       setLoading(false);
+      setDataLoading(false);
     }
   };
 
@@ -191,7 +224,6 @@ export const AdminPage = () => {
     try {
       await deleteDoc(doc(db, 'referrals', selectedReferral.id));
       setReferrals(refs => refs.filter(r => r.id !== selectedReferral.id));
-      setTotalCount(prev => prev - 1);
       toast({
         title: 'Success',
         description: 'Referral deleted successfully',
@@ -201,11 +233,11 @@ export const AdminPage = () => {
       });
       onDeleteClose();
 
-      // Refresh if page becomes empty
-      if (referrals.length === 1 && currentPage > 1) {
-        setCurrentPage(prev => prev - 1);
+      // Refresh data
+      if (isFiltered) {
+        await fetchAllReferralsWithFilters();
       } else {
-        fetchReferrals();
+        await fetchReferrals();
       }
     } catch (error) {
       console.error('Error deleting referral:', error);
@@ -255,7 +287,12 @@ export const AdminPage = () => {
         isClosable: true,
       });
       onEditClose();
-      fetchReferrals(); // Refresh to ensure data consistency
+      // Refresh to ensure data consistency
+      if (isFiltered) {
+        await fetchAllReferralsWithFilters();
+      } else {
+        await fetchReferrals();
+      }
     } catch (error) {
       console.error('Error updating referral:', error);
       toast({
@@ -284,29 +321,16 @@ export const AdminPage = () => {
     return new Date(date).toLocaleString();
   };
 
-  const handleNextPage = async () => {
-    if (currentPage * pageSize < totalCount) {
-      await fetchReferrals('next');
-      setCurrentPage(prev => prev + 1);
-    }
-  };
-
-  const handlePrevPage = async () => {
-    if (currentPage > 1) {
-      await fetchReferrals('prev');
-      setCurrentPage(prev => prev - 1);
-    }
-  };
 
   const handleRefresh = async () => {
-    setCurrentPage(1);
-    setFirstDoc(null);
-    setLastDoc(null);
-    await fetchTotalCount();
-    await fetchReferrals();
+    if (isFiltered) {
+      await fetchAllReferralsWithFilters();
+    } else {
+      await fetchReferrals();
+    }
   };
 
-  const handleClearFilters = () => {
+  const handleClearFilters = async () => {
     setFilterProgram('');
     setFilterAdmitted('');
     setFilterSentTo('');
@@ -314,31 +338,49 @@ export const AdminPage = () => {
     setFilterReferralSource('');
     setFilterName('');
     setFilterInsurance('');
+    setIsFiltered(false);
+    setAllReferrals([]);
+    await fetchReferrals();
   };
 
   const hasActiveFilters = filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterReferralSource || filterName || filterInsurance;
 
-  const totalPages = Math.ceil(totalCount / pageSize);
-  const startRecord = (currentPage - 1) * pageSize + 1;
-  const endRecord = Math.min(currentPage * pageSize, totalCount);
-
-  // All filters are client-side to avoid Firestore composite index issues
-  const filteredReferrals = referrals.filter(ref => {
-    if (filterProgram && ref.program !== filterProgram) return false;
-    if (filterAdmitted !== '' && ref.admitted !== (filterAdmitted === 'true')) return false;
-    if (filterSentTo && ref.referralSentTo !== filterSentTo) return false;
-    if (filterLeadSource && ref.leadSource !== filterLeadSource) return false;
-    if (filterReferralSource && !ref.referralSource?.toLowerCase().includes(filterReferralSource.toLowerCase())) return false;
-    if (filterName) {
-      const fullName = `${ref.firstName} ${ref.lastName}`.toLowerCase();
-      if (!fullName.includes(filterName.toLowerCase())) return false;
+  // Filter change handlers that trigger database queries
+  const handleFilterChange = async () => {
+    if (hasActiveFilters) {
+      await fetchAllReferralsWithFilters();
+    } else {
+      setIsFiltered(false);
+      setAllReferrals([]);
+      await fetchReferrals();
     }
-    if (filterInsurance && !ref.insuranceCompany?.toLowerCase().includes(filterInsurance.toLowerCase())) return false;
-    return true;
-  });
+  };
+
+  // Debounced filter change for text inputs
+  const debouncedFilterChange = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout;
+      return () => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          handleFilterChange();
+        }, 500);
+      };
+    })(),
+    [hasActiveFilters]
+  );
+
+  // Immediate filter change for when fields are cleared
+  const immediateFilterChange = useCallback(() => {
+    handleFilterChange();
+  }, [hasActiveFilters]);
+
+
+  // Get the data to display (filtered or unfiltered)
+  const displayData = isFiltered ? allReferrals : referrals;
 
   // Sorting logic
-  const sortedReferrals = [...filteredReferrals].sort((a, b) => {
+  const sortedReferrals = [...displayData].sort((a, b) => {
     if (sortField === 'name') {
       const nameA = `${a.firstName} ${a.lastName}`.toLowerCase();
       const nameB = `${b.firstName} ${b.lastName}`.toLowerCase();
@@ -352,7 +394,7 @@ export const AdminPage = () => {
     }
   });
 
-  if (loading) {
+  if (loading && initialLoad) {
     return (
       <Container maxW="container.xl" py={10}>
         <VStack spacing={4}>
@@ -385,7 +427,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Name</FormLabel>
                     <Input
                       value={filterName}
-                      onChange={e => setFilterName(e.target.value)}
+                      onChange={(e) => {
+                        setFilterName(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -395,7 +444,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Insurance</FormLabel>
                     <Input
                       value={filterInsurance}
-                      onChange={e => setFilterInsurance(e.target.value)}
+                      onChange={(e) => {
+                        setFilterInsurance(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -405,7 +461,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Program</FormLabel>
                     <Select
                       value={filterProgram}
-                      onChange={e => setFilterProgram(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterProgram(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -420,7 +479,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Admitted</FormLabel>
                     <Select
                       value={filterAdmitted}
-                      onChange={e => setFilterAdmitted(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterAdmitted(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -433,7 +495,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Sent To</FormLabel>
                     <Select
                       value={filterSentTo}
-                      onChange={e => setFilterSentTo(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterSentTo(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -446,7 +511,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Lead Source</FormLabel>
                     <Select
                       value={filterLeadSource}
-                      onChange={e => setFilterLeadSource(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterLeadSource(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -461,7 +529,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Referral Source</FormLabel>
                     <Input
                       value={filterReferralSource}
-                      onChange={e => setFilterReferralSource(e.target.value)}
+                      onChange={(e) => {
+                        setFilterReferralSource(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -498,7 +573,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Name</FormLabel>
                     <Input
                       value={filterName}
-                      onChange={e => setFilterName(e.target.value)}
+                      onChange={(e) => {
+                        setFilterName(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -508,7 +590,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Insurance</FormLabel>
                     <Input
                       value={filterInsurance}
-                      onChange={e => setFilterInsurance(e.target.value)}
+                      onChange={(e) => {
+                        setFilterInsurance(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -518,7 +607,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Program</FormLabel>
                     <Select
                       value={filterProgram}
-                      onChange={e => setFilterProgram(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterProgram(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -533,7 +625,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Admitted</FormLabel>
                     <Select
                       value={filterAdmitted}
-                      onChange={e => setFilterAdmitted(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterAdmitted(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -546,7 +641,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Sent To</FormLabel>
                     <Select
                       value={filterSentTo}
-                      onChange={e => setFilterSentTo(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterSentTo(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -559,7 +657,10 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Lead Source</FormLabel>
                     <Select
                       value={filterLeadSource}
-                      onChange={e => setFilterLeadSource(e.target.value)}
+                      onChange={async (e) => {
+                        setFilterLeadSource(e.target.value);
+                        await handleFilterChange();
+                      }}
                       size="sm"
                       placeholder="All"
                     >
@@ -574,7 +675,14 @@ export const AdminPage = () => {
                     <FormLabel fontSize="sm">Referral Source</FormLabel>
                     <Input
                       value={filterReferralSource}
-                      onChange={e => setFilterReferralSource(e.target.value)}
+                      onChange={(e) => {
+                        setFilterReferralSource(e.target.value);
+                        if (e.target.value === '') {
+                          immediateFilterChange();
+                        } else {
+                          debouncedFilterChange();
+                        }
+                      }}
                       size="sm"
                       placeholder="Search..."
                     />
@@ -610,14 +718,21 @@ export const AdminPage = () => {
           <VStack spacing={4}>
             <HStack width="full" justify="space-between" flexWrap="wrap">
               <Heading size="md">
-                Referrals ({totalCount} total{hasActiveFilters ? `, ${sortedReferrals.length} filtered` : ''})
+                {isFiltered ? `Filtered Results (${sortedReferrals.length})` : `Recent Referrals (${sortedReferrals.length})`}
               </Heading>
-              <Text fontSize="sm" color="gray.600">
-                Showing {Math.min(startRecord, sortedReferrals.length)}-{Math.min(endRecord, sortedReferrals.length)} of {totalCount}
-              </Text>
+              {isFiltered && (
+                <Text fontSize="sm" color="gray.600">
+                  Showing all matching results
+                </Text>
+              )}
             </HStack>
 
-            {sortedReferrals.length === 0 ? (
+            {dataLoading ? (
+              <VStack spacing={4} py={8}>
+                <Spinner size="lg" />
+                <Text>Loading filtered results...</Text>
+              </VStack>
+            ) : sortedReferrals.length === 0 ? (
               <Text>No referrals found</Text>
             ) : (
               <>
@@ -680,26 +795,6 @@ export const AdminPage = () => {
                   </Table>
                 </Box>
 
-                {/* Pagination Controls */}
-                <HStack width="full" justify="center" spacing={4} pt={4}>
-                  <Button
-                    onClick={handlePrevPage}
-                    isDisabled={currentPage === 1}
-                    size="sm"
-                  >
-                    Previous
-                  </Button>
-                  <Text fontSize="sm">
-                    Page {currentPage} of {totalPages}
-                  </Text>
-                  <Button
-                    onClick={handleNextPage}
-                    isDisabled={currentPage >= totalPages}
-                    size="sm"
-                  >
-                    Next
-                  </Button>
-                </HStack>
               </>
             )}
           </VStack>
