@@ -35,7 +35,6 @@ import {
   FormControl,
   FormLabel,
   Select,
-  Checkbox,
   Badge,
   useColorModeValue,
   Card,
@@ -69,7 +68,7 @@ interface ReferralData {
   insuranceCompany: string;
   program: string;
   referralSentTo: string;
-  admitted: boolean;
+  admitted: string;
   createdAt: any;
   createdBy: string;
   outreachRep?: string;
@@ -122,7 +121,7 @@ export const AdminPage = () => {
         q = query(q, where('program', '==', filterProgram));
       }
       if (filterAdmitted !== '') {
-        q = query(q, where('admitted', '==', filterAdmitted === 'true'));
+        q = query(q, where('admitted', '==', filterAdmitted));
       }
       if (filterSentTo) {
         q = query(q, where('referralSentTo', '==', filterSentTo));
@@ -486,8 +485,10 @@ export const AdminPage = () => {
                       size="sm"
                       placeholder="All"
                     >
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
+                      <option value="YES">Yes</option>
+                      <option value="NO">No</option>
+                      <option value="Pending">Pending</option>
+                      <option value="In process">In process</option>
                     </Select>
                   </FormControl>
 
@@ -632,8 +633,10 @@ export const AdminPage = () => {
                       size="sm"
                       placeholder="All"
                     >
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
+                      <option value="YES">Yes</option>
+                      <option value="NO">No</option>
+                      <option value="Pending">Pending</option>
+                      <option value="In process">In process</option>
                     </Select>
                   </FormControl>
 
@@ -759,8 +762,8 @@ export const AdminPage = () => {
                           <Td>{referral.program || '-'}</Td>
                           <Td>{referral.referralSentTo || '-'}</Td>
                           <Td>
-                            <Badge colorScheme={referral.admitted ? 'green' : 'gray'}>
-                              {referral.admitted ? 'Yes' : 'No'}
+                            <Badge colorScheme={referral.admitted === 'YES' ? 'green' : referral.admitted === 'NO' ? 'red' : 'yellow'}>
+                              {referral.admitted || 'Not set'}
                             </Badge>
                           </Td>
                           <Td>{formatDate(referral.createdAt)}</Td>
@@ -926,12 +929,17 @@ export const AdminPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <Checkbox
-                    isChecked={editData.admitted || false}
-                    onChange={(e) => setEditData({ ...editData, admitted: e.target.checked })}
+                  <FormLabel>Admitted</FormLabel>
+                  <Select
+                    value={editData.admitted || ''}
+                    onChange={(e) => setEditData({ ...editData, admitted: e.target.value })}
+                    placeholder="Select status"
                   >
-                    Admitted
-                  </Checkbox>
+                    <option value="YES">Yes</option>
+                    <option value="NO">No</option>
+                    <option value="Pending">Pending</option>
+                    <option value="In process">In process</option>
+                  </Select>
                 </FormControl>
               </VStack>
             </ModalBody>
@@ -990,8 +998,8 @@ export const AdminPage = () => {
                 </Box>
                 <Box>
                   <Text fontWeight="bold">Admitted:</Text>
-                  <Badge colorScheme={selectedReferral?.admitted ? 'green' : 'gray'}>
-                    {selectedReferral?.admitted ? 'Yes' : 'No'}
+                  <Badge colorScheme={selectedReferral?.admitted === 'YES' ? 'green' : selectedReferral?.admitted === 'NO' ? 'red' : 'yellow'}>
+                    {selectedReferral?.admitted || 'Not set'}
                   </Badge>
                 </Box>
                 <Box>

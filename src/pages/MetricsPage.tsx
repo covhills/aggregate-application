@@ -50,7 +50,7 @@ interface ReferralData {
   referralSentTo: string;
   insuranceCompany: string;
   levelOfCare: string;
-  admitted: string | boolean;
+  admitted: string;
   outreachRep?: string;
   createdAt: any;
 }
@@ -202,7 +202,7 @@ export const MetricsPage = () => {
     // Admitted filter
     if (filterAdmitted) {
       filtered = filtered.filter(ref => {
-        const admitted = typeof ref.admitted === 'string' ? ref.admitted : (ref.admitted ? 'Yes' : 'No');
+        const admitted = ref.admitted;
         return admitted === filterAdmitted;
       });
     }
@@ -236,12 +236,9 @@ export const MetricsPage = () => {
 
   // Calculate metrics
   const totalReferrals = filteredReferrals.length;
-  const totalAdmitted = filteredReferrals.filter(r => {
-    if (typeof r.admitted === 'string') {
-      return r.admitted === 'Yes';
-    }
-    return r.admitted === true;
-  }).length;
+
+  const totalAdmitted = filteredReferrals.filter(r => r.admitted === 'YES').length;
+
   const conversionRate = totalReferrals > 0 ? ((totalAdmitted / totalReferrals) * 100).toFixed(1) : '0';
 
   // Group by referral source
@@ -251,7 +248,7 @@ export const MetricsPage = () => {
       acc[source] = { total: 0, admitted: 0 };
     }
     acc[source].total += 1;
-    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    const isAdmitted = ref.admitted === 'YES';
     if (isAdmitted) acc[source].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);
@@ -263,7 +260,7 @@ export const MetricsPage = () => {
       acc[destination] = { total: 0, admitted: 0 };
     }
     acc[destination].total += 1;
-    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    const isAdmitted = ref.admitted === 'YES';
     if (isAdmitted) acc[destination].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);
@@ -287,7 +284,7 @@ export const MetricsPage = () => {
       acc[source] = { total: 0, admitted: 0 };
     }
     acc[source].total += 1;
-    const isAdmitted = typeof ref.admitted === 'string' ? ref.admitted === 'Yes' : ref.admitted === true;
+    const isAdmitted = ref.admitted === 'YES';
     if (isAdmitted) acc[source].admitted += 1;
     return acc;
   }, {} as Record<string, { total: number; admitted: number }>);

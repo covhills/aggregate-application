@@ -33,3 +33,4 @@ test.csv
 Leads.csv
 Leads.csv.backup
 *.csv.backup
+*.csv

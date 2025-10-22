@@ -565,8 +565,8 @@ export const FormPage = () => {
                     onChange={(e) => handleChange('admitted', e.target.value)}
                     placeholder="Select status"
                   >
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
+                    <option value="YES">Yes</option>
+                    <option value="NO">No</option>
                     <option value="Pending">Pending</option>
                     <option value="In process">In process</option>
                   </Select>
