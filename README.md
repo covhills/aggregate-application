@@ -1,4 +1,4 @@
-# Aggregator App test
+# Aggregator App
 
 A referral management system built with React, TypeScript, Firebase, and Chakra UI.
 
