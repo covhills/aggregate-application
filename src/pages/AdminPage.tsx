@@ -72,6 +72,9 @@ interface ReferralData {
   createdAt: any;
   createdBy: string;
   outreachRep?: string;
+  category?: string;
+  admittedToReferrant?: string;
+  assignedTo?: string;
 }
 
 export const AdminPage = () => {
@@ -91,10 +94,13 @@ export const AdminPage = () => {
   const [isFiltered, setIsFiltered] = useState(false);
 
   // Filter state
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [filterProgram, setFilterProgram] = useState('');
   const [filterAdmitted, setFilterAdmitted] = useState('');
   const [filterSentTo, setFilterSentTo] = useState('');
   const [filterLeadSource, setFilterLeadSource] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
   const [filterReferralSource, setFilterReferralSource] = useState('');
   const [filterName, setFilterName] = useState('');
   const [filterInsurance, setFilterInsurance] = useState('');
@@ -106,56 +112,155 @@ export const AdminPage = () => {
 
   const cardBg = useColorModeValue('white', 'gray.700');
 
+  // Normalize outreach rep name to fix spelling
+  const normalizeOutreachRep = (name: string | undefined): string => {
+    if (!name) return '';
+    // Fix "Jessica Estabane" to "Jessica Estebane"
+    return name.replace(/Jessica Estabane/gi, 'Jessica Estebane');
+  };
+
+  // Fixed list of lead sources for the dropdown (matching FormPage)
+  const LEAD_SOURCE_OPTIONS = [
+    'Alumni',
+    'Alumni-Readmit',
+    'Direct-Internet',
+    'Direct-Call Center',
+    'Insurance',
+    'Employee',
+    'Katy Alexander',
+    'Tayler Marsh',
+    'Joey Price',
+    'Jessica Estebane',
+    'SBR'
+  ];
+
+  // Valid lead sources - used for validation
+  const VALID_LEAD_SOURCES = LEAD_SOURCE_OPTIONS;
+
+  // Normalize lead source - fix incorrect values
+  const normalizeLeadSource = (leadSource: string | undefined): string => {
+    if (!leadSource) return '';
+    
+    // Fix "Jessica Estabane" to "Jessica Estebane"
+    let normalized = leadSource.replace(/Jessica Estabane/gi, 'Jessica Estebane');
+    
+    return normalized;
+  };
+
+  // Normalize referral data to fix spelling issues
+  const normalizeReferralData = (data: ReferralData): ReferralData => {
+    return {
+      ...data,
+      leadSource: normalizeLeadSource(data.leadSource),
+      outreachRep: data.outreachRep ? normalizeOutreachRep(data.outreachRep) : data.outreachRep,
+    };
+  };
+
   useEffect(() => {
     fetchReferrals();
   }, []);
 
 
-  const fetchAllReferralsWithFilters = async () => {
+  const fetchAllReferralsWithFilters = async (
+    activeStartDate = startDate,
+    activeEndDate = endDate,
+    activeProgram = filterProgram,
+    activeAdmitted = filterAdmitted,
+    activeSentTo = filterSentTo,
+    activeLeadSource = filterLeadSource,
+    activeCategory = filterCategory,
+    activeReferralSource = filterReferralSource,
+    activeName = filterName,
+    activeInsurance = filterInsurance
+  ) => {
     setDataLoading(true);
     try {
-      let q = query(collection(db, 'referrals'));
-
-      // Apply filters at database level
-      if (filterProgram) {
-        q = query(q, where('program', '==', filterProgram));
-      }
-      if (filterAdmitted !== '') {
-        q = query(q, where('admitted', '==', filterAdmitted));
-      }
-      if (filterSentTo) {
-        q = query(q, where('referralSentTo', '==', filterSentTo));
-      }
-      if (filterLeadSource) {
-        q = query(q, where('leadSource', '==', filterLeadSource));
-      }
-
-      // Apply ordering
-      q = query(q, orderBy('createdAt', 'desc'));
+      // Fetch all referrals and filter client-side to avoid Firestore index issues
+      // This ensures filters work correctly regardless of composite index availability
+      let q = query(collection(db, 'referrals'), orderBy('createdAt', 'desc'));
 
       const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as ReferralData));
+      const data = querySnapshot.docs.map(doc => {
+        const referralData = {
+          id: doc.id,
+          ...doc.data()
+        } as ReferralData;
+        return normalizeReferralData(referralData);
+      });
 
-      // Apply client-side filters that can't be done with Firestore
+      // Apply all filters client-side for reliable filtering
       let filteredData = data;
 
-      if (filterReferralSource) {
-        filteredData = filteredData.filter(ref =>
-          ref.referralSource?.toLowerCase().includes(filterReferralSource.toLowerCase())
-        );
-      }
-      if (filterName) {
+      // Filter by date range
+      if (activeStartDate || activeEndDate) {
         filteredData = filteredData.filter(ref => {
-          const fullName = `${ref.firstName} ${ref.lastName}`.toLowerCase();
-          return fullName.includes(filterName.toLowerCase());
+          if (!ref.createdAt) return false;
+
+          const refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
+          // Ensure start date is at beginning of day (00:00:00)
+          const start = activeStartDate ? new Date(activeStartDate + 'T00:00:00') : null;
+          // Ensure end date is at end of day (23:59:59.999)
+          const end = activeEndDate ? new Date(activeEndDate + 'T23:59:59.999') : null;
+
+          if (start && end) {
+            return refDate >= start && refDate <= end;
+          } else if (start) {
+            return refDate >= start;
+          } else if (end) {
+            return refDate <= end;
+          }
+          return true;
         });
       }
-      if (filterInsurance) {
+
+      // Filter by program
+      if (activeProgram) {
+        filteredData = filteredData.filter(ref => ref.program === activeProgram);
+      }
+
+      // Filter by admitted
+      if (activeAdmitted !== '') {
+        filteredData = filteredData.filter(ref => ref.admitted === activeAdmitted);
+      }
+
+      // Filter by sent to
+      if (activeSentTo) {
+        filteredData = filteredData.filter(ref => ref.referralSentTo === activeSentTo);
+      }
+
+      // Filter by lead source (with normalization)
+      if (activeLeadSource) {
+        const normalizedFilter = normalizeLeadSource(activeLeadSource);
+        filteredData = filteredData.filter(ref => {
+          const normalizedRefLeadSource = normalizeLeadSource(ref.leadSource);
+          return normalizedRefLeadSource === normalizedFilter || ref.leadSource === activeLeadSource;
+        });
+      }
+
+      // Filter by category
+      if (activeCategory) {
+        filteredData = filteredData.filter(ref => ref.category === activeCategory);
+      }
+
+      // Filter by referral source (text search)
+      if (activeReferralSource) {
         filteredData = filteredData.filter(ref =>
-          ref.insuranceCompany?.toLowerCase().includes(filterInsurance.toLowerCase())
+          ref.referralSource?.toLowerCase().includes(activeReferralSource.toLowerCase())
+        );
+      }
+
+      // Filter by name (text search)
+      if (activeName) {
+        filteredData = filteredData.filter(ref => {
+          const fullName = `${ref.firstName} ${ref.lastName}`.toLowerCase();
+          return fullName.includes(activeName.toLowerCase());
+        });
+      }
+
+      // Filter by insurance (text search)
+      if (activeInsurance) {
+        filteredData = filteredData.filter(ref =>
+          ref.insuranceCompany?.toLowerCase().includes(activeInsurance.toLowerCase())
         );
       }
 
@@ -195,10 +300,13 @@ export const AdminPage = () => {
       );
 
       const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as ReferralData));
+      const data = querySnapshot.docs.map(doc => {
+        const referralData = {
+          id: doc.id,
+          ...doc.data()
+        } as ReferralData;
+        return normalizeReferralData(referralData);
+      });
 
       setReferrals(data);
       setInitialLoad(false);
@@ -251,8 +359,9 @@ export const AdminPage = () => {
   };
 
   const handleEdit = (referral: ReferralData) => {
-    setSelectedReferral(referral);
-    setEditData({ ...referral });
+    const normalizedReferral = normalizeReferralData(referral);
+    setSelectedReferral(normalizedReferral);
+    setEditData({ ...normalizedReferral });
     onEditOpen();
   };
 
@@ -270,12 +379,28 @@ export const AdminPage = () => {
       return;
     }
 
+    // Clear admittedToReferrant if referralOut is empty
+    const updateData = { ...editData };
+    if (!updateData.referralOut) {
+      updateData.admittedToReferrant = '';
+    }
+
+    // Normalize outreach rep name before saving
+    if (updateData.outreachRep) {
+      updateData.outreachRep = normalizeOutreachRep(updateData.outreachRep);
+    }
+
+    // Normalize lead source before saving (fix any incorrect values)
+    if (updateData.leadSource) {
+      updateData.leadSource = normalizeLeadSource(updateData.leadSource);
+    }
+
     try {
       const docRef = doc(db, 'referrals', selectedReferral.id);
-      await updateDoc(docRef, editData);
+      await updateDoc(docRef, updateData);
 
       setReferrals(refs =>
-        refs.map(r => r.id === selectedReferral.id ? { ...r, ...editData } : r)
+        refs.map(r => r.id === selectedReferral.id ? { ...r, ...updateData } : r)
       );
 
       toast({
@@ -320,6 +445,64 @@ export const AdminPage = () => {
     return new Date(date).toLocaleString();
   };
 
+  // Helper function to format date as YYYY-MM-DD
+  const formatDateForInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Quick date range setters
+  const setLast7Days = async () => {
+    const today = new Date();
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    const newStartDate = formatDateForInput(sevenDaysAgo);
+    const newEndDate = formatDateForInput(today);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+    await handleFilterChange({ startDate: newStartDate, endDate: newEndDate });
+  };
+
+  const setLast30Days = async () => {
+    const today = new Date();
+    // Set to 30 days ago at 00:00:00
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+    // Set to end of today at 23:59:59
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    const newStartDate = formatDateForInput(thirtyDaysAgo);
+    const newEndDate = formatDateForInput(endOfToday);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+    await handleFilterChange({ startDate: newStartDate, endDate: newEndDate });
+  };
+
+  const setMonthToDate = async () => {
+    const today = new Date();
+    // Set to start of current month at 00:00:00
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+    // Set to end of today at 23:59:59
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    const newStartDate = formatDateForInput(startOfMonth);
+    const newEndDate = formatDateForInput(endOfToday);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+    await handleFilterChange({ startDate: newStartDate, endDate: newEndDate });
+  };
+
+  const setYearToDate = async () => {
+    const today = new Date();
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const newStartDate = formatDateForInput(startOfYear);
+    const newEndDate = formatDateForInput(today);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+    await handleFilterChange({ startDate: newStartDate, endDate: newEndDate });
+  };
+
 
   const handleRefresh = async () => {
     if (isFiltered) {
@@ -330,10 +513,13 @@ export const AdminPage = () => {
   };
 
   const handleClearFilters = async () => {
+    setStartDate('');
+    setEndDate('');
     setFilterProgram('');
     setFilterAdmitted('');
     setFilterSentTo('');
     setFilterLeadSource('');
+    setFilterCategory('');
     setFilterReferralSource('');
     setFilterName('');
     setFilterInsurance('');
@@ -342,12 +528,49 @@ export const AdminPage = () => {
     await fetchReferrals();
   };
 
-  const hasActiveFilters = filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterReferralSource || filterName || filterInsurance;
+  const hasActiveFilters = startDate || endDate || filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterCategory || filterReferralSource || filterName || filterInsurance;
 
   // Filter change handlers that trigger database queries
-  const handleFilterChange = async () => {
-    if (hasActiveFilters) {
-      await fetchAllReferralsWithFilters();
+  // Accept optional filter values to use immediately instead of waiting for state update
+  const handleFilterChange = async (newFilters?: {
+    startDate?: string;
+    endDate?: string;
+    program?: string;
+    admitted?: string;
+    sentTo?: string;
+    leadSource?: string;
+    category?: string;
+    referralSource?: string;
+    name?: string;
+    insurance?: string;
+  }) => {
+    // Use provided new values or fall back to current state
+    const activeStartDate = newFilters?.startDate !== undefined ? newFilters.startDate : startDate;
+    const activeEndDate = newFilters?.endDate !== undefined ? newFilters.endDate : endDate;
+    const activeProgram = newFilters?.program !== undefined ? newFilters.program : filterProgram;
+    const activeAdmitted = newFilters?.admitted !== undefined ? newFilters.admitted : filterAdmitted;
+    const activeSentTo = newFilters?.sentTo !== undefined ? newFilters.sentTo : filterSentTo;
+    const activeLeadSource = newFilters?.leadSource !== undefined ? newFilters.leadSource : filterLeadSource;
+    const activeCategory = newFilters?.category !== undefined ? newFilters.category : filterCategory;
+    const activeReferralSource = newFilters?.referralSource !== undefined ? newFilters.referralSource : filterReferralSource;
+    const activeName = newFilters?.name !== undefined ? newFilters.name : filterName;
+    const activeInsurance = newFilters?.insurance !== undefined ? newFilters.insurance : filterInsurance;
+
+    const hasActive = activeStartDate || activeEndDate || activeProgram || activeAdmitted !== '' || activeSentTo || activeLeadSource || activeCategory || activeReferralSource || activeName || activeInsurance;
+
+    if (hasActive) {
+      await fetchAllReferralsWithFilters(
+        activeStartDate,
+        activeEndDate,
+        activeProgram,
+        activeAdmitted,
+        activeSentTo,
+        activeLeadSource,
+        activeCategory,
+        activeReferralSource,
+        activeName,
+        activeInsurance
+      );
     } else {
       setIsFiltered(false);
       setAllReferrals([]);
@@ -414,11 +637,27 @@ export const AdminPage = () => {
               <VStack spacing={4} align="stretch">
                 <HStack width="full" justify="space-between">
                   <Heading size="sm">Filters</Heading>
-                  {hasActiveFilters && (
-                    <Button size="sm" onClick={handleClearFilters} variant="ghost">
-                      Clear All Filters
-                    </Button>
-                  )}
+                  <HStack spacing={2}>
+                    <Box display="flex" gap={2} onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" onClick={setLast7Days} colorScheme="blue" variant="outline">
+                        7 Days
+                      </Button>
+                      <Button size="sm" onClick={setLast30Days} colorScheme="blue" variant="outline">
+                        30 Days
+                      </Button>
+                      <Button size="sm" onClick={setMonthToDate} colorScheme="blue" variant="outline">
+                        MTD
+                      </Button>
+                      <Button size="sm" onClick={setYearToDate} colorScheme="blue" variant="outline">
+                        YTD
+                      </Button>
+                    </Box>
+                    {hasActiveFilters && (
+                      <Button size="sm" onClick={handleClearFilters} variant="ghost">
+                        Clear All Filters
+                      </Button>
+                    )}
+                  </HStack>
                 </HStack>
 
                 <Stack direction={{ base: 'column', md: 'row' }} spacing={4} flexWrap="wrap">
@@ -457,12 +696,13 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl maxW={{ base: 'full', md: '200px' }}>
-                    <FormLabel fontSize="sm">Program</FormLabel>
+                    <FormLabel fontSize="sm">Level of Care</FormLabel>
                     <Select
                       value={filterProgram}
                       onChange={async (e) => {
-                        setFilterProgram(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterProgram(newValue);
+                        await handleFilterChange({ program: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -479,8 +719,9 @@ export const AdminPage = () => {
                     <Select
                       value={filterAdmitted}
                       onChange={async (e) => {
-                        setFilterAdmitted(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterAdmitted(newValue);
+                        await handleFilterChange({ admitted: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -497,8 +738,9 @@ export const AdminPage = () => {
                     <Select
                       value={filterSentTo}
                       onChange={async (e) => {
-                        setFilterSentTo(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterSentTo(newValue);
+                        await handleFilterChange({ sentTo: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -509,20 +751,40 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl maxW={{ base: 'full', md: '200px' }}>
-                    <FormLabel fontSize="sm">Lead Source</FormLabel>
+                    <FormLabel fontSize="sm">Category</FormLabel>
                     <Select
-                      value={filterLeadSource}
+                      value={filterCategory}
                       onChange={async (e) => {
-                        setFilterLeadSource(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterCategory(newValue);
+                        await handleFilterChange({ category: newValue });
                       }}
                       size="sm"
                       placeholder="All"
                     >
-                      <option value="Insurance">Insurance</option>
-                      <option value="Kaiser">Kaiser</option>
+                      <option value="Base">Base</option>
                       <option value="Outreach">Outreach</option>
+                      <option value="Kaiser">Kaiser</option>
                       <option value="Direct">Direct</option>
+                      <option value="Union">Union</option>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl maxW={{ base: 'full', md: '200px' }}>
+                    <FormLabel fontSize="sm">Lead Source</FormLabel>
+                    <Select
+                      value={filterLeadSource}
+                      onChange={async (e) => {
+                        const newValue = e.target.value;
+                        setFilterLeadSource(newValue);
+                        await handleFilterChange({ leadSource: newValue });
+                      }}
+                      size="sm"
+                      placeholder="All"
+                    >
+                      {LEAD_SOURCE_OPTIONS.map(source => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
                     </Select>
                   </FormControl>
 
@@ -556,8 +818,22 @@ export const AdminPage = () => {
                 <Box flex="1" textAlign="left">
                   <HStack justify="space-between" width="full" pr={2}>
                     <Heading size="sm">
-                      Filters {hasActiveFilters && `(${[filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterReferralSource, filterName, filterInsurance].filter(Boolean).length})`}
+                      Filters {hasActiveFilters && `(${[startDate, endDate, filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterCategory, filterReferralSource, filterName, filterInsurance].filter(Boolean).length})`}
                     </Heading>
+                    <Box display="flex" gap={2} onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" onClick={setLast7Days} colorScheme="blue" variant="outline">
+                        7 Days
+                      </Button>
+                      <Button size="sm" onClick={setLast30Days} colorScheme="blue" variant="outline">
+                        30 Days
+                      </Button>
+                      <Button size="sm" onClick={setMonthToDate} colorScheme="blue" variant="outline">
+                        MTD
+                      </Button>
+                      <Button size="sm" onClick={setYearToDate} colorScheme="blue" variant="outline">
+                        YTD
+                      </Button>
+                    </Box>
                   </HStack>
                 </Box>
                 <AccordionIcon />
@@ -605,12 +881,13 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl>
-                    <FormLabel fontSize="sm">Program</FormLabel>
+                    <FormLabel fontSize="sm">Level of Care</FormLabel>
                     <Select
                       value={filterProgram}
                       onChange={async (e) => {
-                        setFilterProgram(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterProgram(newValue);
+                        await handleFilterChange({ program: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -627,8 +904,9 @@ export const AdminPage = () => {
                     <Select
                       value={filterAdmitted}
                       onChange={async (e) => {
-                        setFilterAdmitted(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterAdmitted(newValue);
+                        await handleFilterChange({ admitted: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -645,8 +923,9 @@ export const AdminPage = () => {
                     <Select
                       value={filterSentTo}
                       onChange={async (e) => {
-                        setFilterSentTo(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterSentTo(newValue);
+                        await handleFilterChange({ sentTo: newValue });
                       }}
                       size="sm"
                       placeholder="All"
@@ -657,20 +936,40 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl>
-                    <FormLabel fontSize="sm">Lead Source</FormLabel>
+                    <FormLabel fontSize="sm">Category</FormLabel>
                     <Select
-                      value={filterLeadSource}
+                      value={filterCategory}
                       onChange={async (e) => {
-                        setFilterLeadSource(e.target.value);
-                        await handleFilterChange();
+                        const newValue = e.target.value;
+                        setFilterCategory(newValue);
+                        await handleFilterChange({ category: newValue });
                       }}
                       size="sm"
                       placeholder="All"
                     >
-                      <option value="Insurance">Insurance</option>
-                      <option value="Kaiser">Kaiser</option>
+                      <option value="Base">Base</option>
                       <option value="Outreach">Outreach</option>
+                      <option value="Kaiser">Kaiser</option>
                       <option value="Direct">Direct</option>
+                      <option value="Union">Union</option>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel fontSize="sm">Lead Source</FormLabel>
+                    <Select
+                      value={filterLeadSource}
+                      onChange={async (e) => {
+                        const newValue = e.target.value;
+                        setFilterLeadSource(newValue);
+                        await handleFilterChange({ leadSource: newValue });
+                      }}
+                      size="sm"
+                      placeholder="All"
+                    >
+                      {LEAD_SOURCE_OPTIONS.map(source => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
                     </Select>
                   </FormControl>
 
@@ -744,9 +1043,9 @@ export const AdminPage = () => {
                     <Thead>
                       <Tr>
                         <Th>Name</Th>
+                        <Th>Category</Th>
                         <Th>Lead Source</Th>
                         <Th>Referral Source</Th>
-                        <Th>Program</Th>
                         <Th>Sent To</Th>
                         <Th>Admitted</Th>
                         <Th>Date</Th>
@@ -757,9 +1056,9 @@ export const AdminPage = () => {
                       {sortedReferrals.map((referral) => (
                         <Tr key={referral.id}>
                           <Td>{`${referral.firstName} ${referral.lastName}`}</Td>
+                          <Td>{referral.category || '-'}</Td>
                           <Td>{referral.leadSource}</Td>
                           <Td>{referral.referralSource || '-'}</Td>
-                          <Td>{referral.program || '-'}</Td>
                           <Td>{referral.referralSentTo || '-'}</Td>
                           <Td>
                             <Badge colorScheme={referral.admitted === 'YES' ? 'green' : referral.admitted === 'NO' ? 'red' : 'yellow'}>
@@ -861,10 +1160,9 @@ export const AdminPage = () => {
                     value={editData.leadSource || ''}
                     onChange={(e) => setEditData({ ...editData, leadSource: e.target.value })}
                   >
-                    <option value="Insurance">Insurance</option>
-                    <option value="Kaiser">Kaiser</option>
-                    <option value="Outreach">Outreach</option>
-                    <option value="Direct">Direct</option>
+                    {LEAD_SOURCE_OPTIONS.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
                   </Select>
                 </FormControl>
 
@@ -890,7 +1188,37 @@ export const AdminPage = () => {
                   <FormLabel>Referral Out</FormLabel>
                   <Input
                     value={editData.referralOut || ''}
-                    onChange={(e) => setEditData({ ...editData, referralOut: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...editData, referralOut: e.target.value };
+                      // Clear admittedToReferrant if referralOut is being cleared
+                      if (!e.target.value) {
+                        updated.admittedToReferrant = '';
+                      }
+                      setEditData(updated);
+                    }}
+                  />
+                </FormControl>
+
+                {editData.referralOut && (
+                  <FormControl>
+                    <FormLabel>Admitted to Referrant</FormLabel>
+                    <Select
+                      value={editData.admittedToReferrant || ''}
+                      onChange={(e) => setEditData({ ...editData, admittedToReferrant: e.target.value })}
+                      placeholder="Select status"
+                    >
+                      <option value="YES">Yes</option>
+                      <option value="NO">No</option>
+                      <option value="Pending">Pending</option>
+                    </Select>
+                  </FormControl>
+                )}
+
+                <FormControl>
+                  <FormLabel>Category</FormLabel>
+                  <Input
+                    value={editData.category || ''}
+                    onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                   />
                 </FormControl>
 
@@ -903,11 +1231,11 @@ export const AdminPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Program</FormLabel>
+                  <FormLabel>Level of Care</FormLabel>
                   <Select
                     value={editData.program || ''}
                     onChange={(e) => setEditData({ ...editData, program: e.target.value })}
-                    placeholder="Select program"
+                    placeholder="Select level of care"
                   >
                     <option value="DTX">DTX</option>
                     <option value="RTC">RTC</option>
@@ -941,6 +1269,14 @@ export const AdminPage = () => {
                     <option value="In process">In process</option>
                   </Select>
                 </FormControl>
+
+                <FormControl>
+                  <FormLabel>Assigned To</FormLabel>
+                  <Input
+                    value={editData.assignedTo || ''}
+                    onChange={(e) => setEditData({ ...editData, assignedTo: e.target.value })}
+                  />
+                </FormControl>
               </VStack>
             </ModalBody>
             <ModalFooter>
@@ -973,7 +1309,7 @@ export const AdminPage = () => {
                 {selectedReferral?.leadSource === 'Outreach' && (
                   <Box>
                     <Text fontWeight="bold">Outreach Rep:</Text>
-                    <Text>{selectedReferral?.outreachRep || '-'}</Text>
+                    <Text>{normalizeOutreachRep(selectedReferral?.outreachRep) || '-'}</Text>
                   </Box>
                 )}
                 <Box>
@@ -984,12 +1320,22 @@ export const AdminPage = () => {
                   <Text fontWeight="bold">Referral Out:</Text>
                   <Text>{selectedReferral?.referralOut || '-'}</Text>
                 </Box>
+                {selectedReferral?.referralOut && (
+                  <Box>
+                    <Text fontWeight="bold">Admitted to Referrant:</Text>
+                    <Text>{selectedReferral?.admittedToReferrant || '-'}</Text>
+                  </Box>
+                )}
+                <Box>
+                  <Text fontWeight="bold">Category:</Text>
+                  <Text>{selectedReferral?.category || '-'}</Text>
+                </Box>
                 <Box>
                   <Text fontWeight="bold">Insurance Company:</Text>
                   <Text>{selectedReferral?.insuranceCompany || '-'}</Text>
                 </Box>
                 <Box>
-                  <Text fontWeight="bold">Program:</Text>
+                  <Text fontWeight="bold">Level of Care:</Text>
                   <Text>{selectedReferral?.program || '-'}</Text>
                 </Box>
                 <Box>
@@ -1001,6 +1347,10 @@ export const AdminPage = () => {
                   <Badge colorScheme={selectedReferral?.admitted === 'YES' ? 'green' : selectedReferral?.admitted === 'NO' ? 'red' : 'yellow'}>
                     {selectedReferral?.admitted || 'Not set'}
                   </Badge>
+                </Box>
+                <Box>
+                  <Text fontWeight="bold">Assigned To:</Text>
+                  <Text>{selectedReferral?.assignedTo || '-'}</Text>
                 </Box>
                 <Box>
                   <Text fontWeight="bold">Created At:</Text>

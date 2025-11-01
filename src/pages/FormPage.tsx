@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -26,7 +26,7 @@ import {
   List,
   ListItem,
 } from '@chakra-ui/react';
-import { collection, addDoc, serverTimestamp, writeBatch, doc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc, Timestamp, getDocs, query } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -35,15 +35,19 @@ interface FormData {
   lastName: string;
   callInDate: string;
   createdDate: string;
+  category: string;
   leadSource: string;
   referralSource: string;
   referralOut: string;
   referralType: string;
   insuranceCompany: string;
+  insuranceType: string;
   privatePay: boolean;
+  admittedToReferrant: string;
+  admitted: string;
+  assignedTo: string;
   levelOfCare: string;
   referralSentTo: string;
-  admitted: string;
   outreachRep?: string;
 }
 
@@ -56,28 +60,137 @@ export const FormPage = () => {
   const [uploadResults, setUploadResults] = useState<{ success: number; failed: number; errors: string[] }>({ success: 0, failed: 0, errors: [] });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [uniqueOutreachReps, setUniqueOutreachReps] = useState<string[]>([]);
+  const [uniqueReferralTypes, setUniqueReferralTypes] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
     callInDate: '',
     createdDate: '',
-    leadSource: 'Insurance',
+    category: '',
+    leadSource: '',
     referralSource: '',
     referralOut: '',
     referralType: '',
     insuranceCompany: '',
+    insuranceType: '',
     privatePay: false,
+    admittedToReferrant: '',
+    admitted: '',
+    assignedTo: '',
     levelOfCare: '',
     referralSentTo: '',
-    admitted: '',
     outreachRep: '',
   });
 
   const cardBg = useColorModeValue('white', 'gray.700');
 
+  // Fixed list of lead sources for the dropdown
+  const LEAD_SOURCE_OPTIONS = [
+    'Alumni',
+    'Alumni-Readmit',
+    'Direct-Internet',
+    'Direct-Call Center',
+    'Insurance',
+    'Employee',
+    'Katy Alexander',
+    'Tayler Marsh',
+    'Joey Price',
+    'Jessica Estebane',
+    'SBR'
+  ];
+
+  // Valid lead sources - used for validation and normalization
+  const VALID_LEAD_SOURCES = LEAD_SOURCE_OPTIONS;
+
+  // Normalize lead source - fix incorrect values
+  const normalizeLeadSource = (leadSource: string | undefined): string => {
+    if (!leadSource) return '';
+    
+    // Fix "Jessica Estabane" to "Jessica Estebane"
+    let normalized = leadSource.replace(/Jessica Estabane/gi, 'Jessica Estebane');
+    
+    return normalized;
+  };
+
+  // Normalize outreach rep name to fix spelling
+  const normalizeOutreachRep = (name: string | undefined): string => {
+    if (!name) return '';
+    // Fix "Jessica Estabane" to "Jessica Estebane"
+    return name.replace(/Jessica Estabane/gi, 'Jessica Estebane');
+  };
+
+  // Normalize referral type - fix "Treament center" to "Treatment Center"
+  const normalizeReferralType = (referralType: string | undefined): string => {
+    if (!referralType) return '';
+    
+    // Fix "Treament center" (misspelled) to "Treatment Center" (correct spelling)
+    let normalized = referralType.trim();
+    // Fix the misspelling "Treament" to "Treatment" - catch all variations with flexible spacing
+    // Matches "Treament Center", "Treament center", "TreamentCenter", etc.
+    normalized = normalized.replace(/Treament\s*[Cc]enter/gi, 'Treatment Center');
+    // Also normalize other case variations to "Treatment Center" for consistency
+    normalized = normalized.replace(/treatment\s+center/gi, 'Treatment Center');
+    normalized = normalized.replace(/Treatment\s+center/gi, 'Treatment Center');
+    
+    return normalized;
+  };
+
+
+  useEffect(() => {
+    const fetchOutreachReps = async () => {
+      try {
+        const q = query(collection(db, 'referrals'));
+        const querySnapshot = await getDocs(q);
+        const outreachReps = Array.from(
+          new Set(
+            querySnapshot.docs
+              .map(doc => {
+                const rep = doc.data().outreachRep;
+                return rep ? normalizeOutreachRep(rep) : null;
+              })
+              .filter(Boolean)
+              .filter(rep => rep !== 'Jessica Estabane') // Remove incorrect spelling
+          )
+        ).sort() as string[];
+        setUniqueOutreachReps(outreachReps);
+        
+        // Also fetch and normalize referral types (matching MetricsPage logic)
+        const referralTypes = Array.from(
+          new Set(
+            querySnapshot.docs
+              .map(doc => {
+                const type = doc.data().referralType;
+                return type ? normalizeReferralType(type) : null;
+              })
+              .filter(Boolean)
+              .filter(type => {
+                // Remove any variations of the misspelled "Treament center" (should already be normalized, but double-check)
+                const lowerType = type.toLowerCase().trim();
+                return lowerType !== 'treament center' && !lowerType.includes('treament');
+              })
+          )
+        ).sort() as string[];
+        setUniqueReferralTypes(referralTypes);
+      } catch (error) {
+        console.error('Error fetching outreach reps:', error);
+      }
+    };
+    fetchOutreachReps();
+  }, []);
+
   const handleChange = (field: keyof FormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      
+      // If referralOut is being changed and becomes empty, clear admittedToReferrant
+      if (field === 'referralOut' && !value) {
+        updated.admittedToReferrant = '';
+      }
+      
+      return updated;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,8 +221,16 @@ export const FormPage = () => {
     try {
       setIsLoading(true);
 
-      await addDoc(collection(db, 'referrals'), {
+      // Normalize lead source, outreach rep, and referral type before saving
+      const normalizedFormData = {
         ...formData,
+        leadSource: formData.leadSource ? normalizeLeadSource(formData.leadSource) : formData.leadSource,
+        outreachRep: formData.outreachRep ? normalizeOutreachRep(formData.outreachRep) : formData.outreachRep,
+        referralType: formData.referralType ? normalizeReferralType(formData.referralType) : formData.referralType,
+      };
+
+      await addDoc(collection(db, 'referrals'), {
+        ...normalizedFormData,
         createdAt: serverTimestamp(),
         createdBy: user?.email || 'unknown',
       });
@@ -128,15 +249,19 @@ export const FormPage = () => {
         lastName: '',
         callInDate: '',
         createdDate: '',
-        leadSource: 'Insurance',
+        category: '',
+        leadSource: '',
         referralSource: '',
         referralOut: '',
         referralType: '',
         insuranceCompany: '',
+        insuranceType: '',
         privatePay: false,
+        admittedToReferrant: '',
+        admitted: '',
+        assignedTo: '',
         levelOfCare: '',
         referralSentTo: '',
-        admitted: '',
         outreachRep: '',
       });
     } catch (error) {
@@ -216,8 +341,16 @@ export const FormPage = () => {
     // Created Date mapping (from Created Time in exports)
     mapped.createdDate = row.createdDate || row['Created Date'] || row['Created Time'] || row['created time'] || '';
 
-    // Lead Source mapping
-    mapped.leadSource = row.leadSource || row['Lead Source'] || row['lead source'] || '';
+    // Category mapping
+    mapped.category = row.category || row['Category'] || row['category'] || '';
+
+    // Lead Source mapping - preserve exact value from CSV
+    let leadSourceValue = row.leadSource || row['Lead Source'] || row['lead source'] || '';
+    // Normalize only the misspelled "Jessica Estabane" to "Jessica Estebane"
+    if (leadSourceValue) {
+      leadSourceValue = normalizeLeadSource(leadSourceValue);
+    }
+    mapped.leadSource = leadSourceValue;
 
     // Referral Source mapping (clean "Accounts::::" prefix)
     mapped.referralSource = cleanFieldValue(row.referralSource || row['Referral Source'] || row['referral source'] || '');
@@ -231,8 +364,25 @@ export const FormPage = () => {
     // Insurance Company mapping
     mapped.insuranceCompany = row.insuranceCompany || row['Insurance Company'] || row['insurance company'] || '';
 
+    // Insurance Type mapping
+    mapped.insuranceType = row.insuranceType || row['Insurance Type'] || row['insurance type'] || '';
+
     // Private Pay mapping
     mapped.privatePay = row.privatePay || row['Private Pay'] || row['private pay'] || '';
+
+    // Admitted to Referrant mapping (only if Referral Out is populated)
+    const referralOutValue = cleanFieldValue(row.referralOut || row['Referral Out'] || row['referral out'] || '');
+    if (referralOutValue) {
+      mapped.admittedToReferrant = row.admittedToReferrant || row['Admitted to Referrant'] || row['admitted to referrant'] || '';
+    } else {
+      mapped.admittedToReferrant = '';
+    }
+
+    // Admitted mapping
+    mapped.admitted = row.admitted || row.Admitted || row['admitted'] || '';
+
+    // Assigned To mapping
+    mapped.assignedTo = row.assignedTo || row['Assigned To'] || row['assigned to'] || '';
 
     // Level of Care mapping (could be Program in old format)
     mapped.levelOfCare = row.levelOfCare || row['Level of Care'] || row['level of care'] || row.program || row.Program || '';
@@ -240,11 +390,9 @@ export const FormPage = () => {
     // Referral Sent To mapping
     mapped.referralSentTo = row.referralSentTo || row['Referral Sent To'] || row['referral sent to'] || '';
 
-    // Admitted mapping
-    mapped.admitted = row.admitted || row.Admitted || '';
-
-    // Outreach Rep mapping
-    mapped.outreachRep = row.outreachRep || row['Outreach Rep'] || row['outreach rep'] || '';
+    // Outreach Rep mapping (normalize spelling)
+    const outreachRepRaw = row.outreachRep || row['Outreach Rep'] || row['outreach rep'] || '';
+    mapped.outreachRep = outreachRepRaw ? normalizeOutreachRep(outreachRepRaw) : '';
 
     return mapped;
   };
@@ -312,6 +460,22 @@ export const FormPage = () => {
             row.leadSource = 'Direct';
           }
 
+          // Normalize leadSource - only fixes "Jessica Estabane" to "Jessica Estebane"
+          // All other lead source values (including person names) are preserved as-is from CSV
+          if (row.leadSource) {
+            row.leadSource = normalizeLeadSource(row.leadSource);
+          }
+
+          // Normalize outreachRep
+          if (row.outreachRep) {
+            row.outreachRep = normalizeOutreachRep(row.outreachRep);
+          }
+
+          // Normalize referralType
+          if (row.referralType) {
+            row.referralType = normalizeReferralType(row.referralType);
+          }
+
           // Validate outreachRep when leadSource is Outreach
           if (row.leadSource === 'Outreach' && !row.outreachRep) {
             failedCount++;
@@ -345,21 +509,28 @@ export const FormPage = () => {
             createdAtTimestamp = serverTimestamp();
           }
 
+          // Clear admittedToReferrant if referralOut is empty
+          const admittedToReferrantValue = row.referralOut ? (row.admittedToReferrant || '') : '';
+
           const docRef = doc(collection(db, 'referrals'));
           batch.set(docRef, {
             firstName: row.firstName || '',
             lastName: row.lastName || '',
             callInDate: row.callInDate || '',
             createdDate: row.createdDate || '',
+            category: row.category || '',
             leadSource: row.leadSource || 'Direct',
             referralSource: row.referralSource || '',
             referralOut: row.referralOut || '',
             referralType: row.referralType || '',
             insuranceCompany: row.insuranceCompany || '',
+            insuranceType: row.insuranceType || '',
             privatePay: privatePay,
+            admittedToReferrant: admittedToReferrantValue,
+            admitted: row.admitted || '',
+            assignedTo: row.assignedTo || '',
             levelOfCare: row.levelOfCare || '',
             referralSentTo: row.referralSentTo || '',
-            admitted: row.admitted || '',
             outreachRep: row.outreachRep || '',
             createdAt: createdAtTimestamp,
             createdBy: user?.email || 'unknown',
@@ -454,27 +625,50 @@ export const FormPage = () => {
                   />
                 </FormControl>
 
+                <FormControl>
+                  <FormLabel>Category</FormLabel>
+                  <Select
+                    value={formData.category}
+                    onChange={(e) => handleChange('category', e.target.value)}
+                    placeholder="Select category"
+                  >
+                    <option value="Base">Base</option>
+                    <option value="Outreach">Outreach</option>
+                    <option value="Kaiser">Kaiser</option>
+                    <option value="Direct">Direct</option>
+                    <option value="Union">Union</option>
+                  </Select>
+                </FormControl>
+
                 <FormControl isRequired>
                   <FormLabel>Lead Source</FormLabel>
                   <Select
                     value={formData.leadSource}
                     onChange={(e) => handleChange('leadSource', e.target.value)}
+                    placeholder="Select lead source"
                   >
-                    <option value="Insurance">Insurance</option>
-                    <option value="Kaiser">Kaiser</option>
-                    <option value="Outreach">Outreach</option>
-                    <option value="Direct">Direct</option>
+                    {LEAD_SOURCE_OPTIONS.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
                   </Select>
                 </FormControl>
 
                 {formData.leadSource === 'Outreach' && (
                   <FormControl isRequired>
                     <FormLabel>Outreach Rep</FormLabel>
-                    <Input
+                    <Select
                       value={formData.outreachRep || ''}
                       onChange={(e) => handleChange('outreachRep', e.target.value)}
-                      placeholder="Enter outreach rep name"
-                    />
+                      placeholder="Select outreach rep"
+                    >
+                      {uniqueOutreachReps.length > 0 ? (
+                        uniqueOutreachReps.map(rep => (
+                          <option key={rep} value={rep}>{rep}</option>
+                        ))
+                      ) : (
+                        <option value="">No outreach reps available</option>
+                      )}
+                    </Select>
                   </FormControl>
                 )}
 
@@ -488,29 +682,15 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Referral Out</FormLabel>
-                  <Input
-                    value={formData.referralOut}
-                    onChange={(e) => handleChange('referralOut', e.target.value)}
-                    placeholder="Enter referral out"
-                  />
-                </FormControl>
-
-                <FormControl>
                   <FormLabel>Referral Type</FormLabel>
                   <Select
                     value={formData.referralType}
                     onChange={(e) => handleChange('referralType', e.target.value)}
                     placeholder="Select referral type"
                   >
-                    <option value="Treatment center">Treatment center</option>
-                    <option value="Internet">Internet</option>
-                    <option value="Therapist">Therapist</option>
-                    <option value="Interventionist">Interventionist</option>
-                    <option value="Kaiser">Kaiser</option>
-                    <option value="Insurance">Insurance</option>
-                    <option value="Alumni">Alumni</option>
-                    <option value="Re-admit">Re-admit</option>
+                    {uniqueReferralTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
                   </Select>
                 </FormControl>
 
@@ -521,6 +701,20 @@ export const FormPage = () => {
                     onChange={(e) => handleChange('insuranceCompany', e.target.value)}
                     placeholder="Enter insurance company"
                   />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Insurance Type</FormLabel>
+                  <Select
+                    value={formData.insuranceType}
+                    onChange={(e) => handleChange('insuranceType', e.target.value)}
+                    placeholder="Select insurance type"
+                  >
+                    <option value="HMO">HMO</option>
+                    <option value="PPO">PPO</option>
+                    <option value="EPO">EPO</option>
+                    <option value="Union">Union</option>
+                  </Select>
                 </FormControl>
 
                 <FormControl>
@@ -572,6 +766,39 @@ export const FormPage = () => {
                   </Select>
                 </FormControl>
 
+                <FormControl>
+                  <FormLabel>Admissions Rep</FormLabel>
+                  <Input
+                    value={formData.assignedTo}
+                    onChange={(e) => handleChange('assignedTo', e.target.value)}
+                    placeholder="Enter admissions rep"
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Referral Out</FormLabel>
+                  <Input
+                    value={formData.referralOut}
+                    onChange={(e) => handleChange('referralOut', e.target.value)}
+                    placeholder="Enter referral out"
+                  />
+                </FormControl>
+
+                {formData.referralOut && (
+                  <FormControl>
+                    <FormLabel>Admitted to Referrant</FormLabel>
+                    <Select
+                      value={formData.admittedToReferrant}
+                      onChange={(e) => handleChange('admittedToReferrant', e.target.value)}
+                      placeholder="Select status"
+                    >
+                      <option value="YES">Yes</option>
+                      <option value="NO">No</option>
+                      <option value="Pending">Pending</option>
+                    </Select>
+                  </FormControl>
+                )}
+
                 <Button
                   type="submit"
                   colorScheme="blue"
@@ -597,7 +824,7 @@ export const FormPage = () => {
           <ModalBody>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Upload a CSV file with columns like: firstName (or "First Name"), lastName (or "Last Name"), callInDate, createdDate (or "Created Time"), leadSource (or "Lead Source"), referralSource (or "Referral Source"), referralOut (or "Referral Out"), referralType, insuranceCompany (or "Insurance Company"), privatePay, levelOfCare, referralSentTo, admitted, outreachRep
+                Upload a CSV file with columns: First Name, Last Name, Call in Date, Created Date, Category, Lead Source, Referral Source, Referral Out, Referral Type, Insurance Company, Private Pay, Admitted to Referrant, Admitted, Assigned To, Level of Care, Referral Sent To
               </Text>
 
               <Text fontSize="sm" fontWeight="bold">

@@ -8,6 +8,7 @@ import { FormPage } from './pages/FormPage';
 import { AdminPage } from './pages/AdminPage';
 import { MetricsPage } from './pages/MetricsPage';
 import { SnakeGame } from './pages/SnakeGame';
+import { ReferrantContactsPage } from './pages/ReferrantContactsPage';
 import { ColorModeToggle } from './components/ColorModeToggle';
 import theme from './theme';
 import { signOut } from 'firebase/auth';
@@ -99,6 +100,15 @@ const AppHeader = () => {
                   >
                     Metrics
                   </Button>
+                  <Button
+                    as={Link}
+                    to="/referrant-contacts"
+                    variant={isActive('/referrant-contacts') ? 'solid' : 'ghost'}
+                    colorScheme={isActive('/referrant-contacts') ? 'blue' : 'gray'}
+                    size="sm"
+                  >
+                    Referrant Contacts
+                  </Button>
                 </HStack>
               )}
             </HStack>
@@ -173,6 +183,17 @@ const AppHeader = () => {
                 >
                   Metrics
                 </Button>
+                <Button
+                  as={Link}
+                  to="/referrant-contacts"
+                  variant={isActive('/referrant-contacts') ? 'solid' : 'ghost'}
+                  colorScheme={isActive('/referrant-contacts') ? 'blue' : 'gray'}
+                  size="xs"
+                  fontSize="xs"
+                  px={2}
+                >
+                  Referrant Contacts
+                </Button>
               </HStack>
             )}
           </VStack>
@@ -211,6 +232,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <MetricsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/referrant-contacts"
+              element={
+                <ProtectedRoute>
+                  <ReferrantContactsPage />
                 </ProtectedRoute>
               }
             />
