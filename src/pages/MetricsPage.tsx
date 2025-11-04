@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import {
   Box,
   Container,
@@ -34,7 +35,9 @@ import {
   AccordionPanel,
   AccordionIcon,
   useColorModeValue,
-  HStack
+  HStack,
+  Badge,
+  Checkbox
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query } from 'firebase/firestore';
@@ -92,6 +95,17 @@ export const MetricsPage = () => {
   const [showAllReferralOut, setShowAllReferralOut] = useState(false);
   const [referralOutSortField, setReferralOutSortField] = useState<'total' | 'admitted' | 'conversion' | null>('total');
   const [referralOutSortDirection, setReferralOutSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [combineAllFacilities, setCombineAllFacilities] = useState(false);
+  
+  // Quarterly metrics search and sort
+  const [quarterlyReferralSourceSearch, setQuarterlyReferralSourceSearch] = useState('');
+  const [quarterlyReferralOutSearch, setQuarterlyReferralOutSearch] = useState('');
+  const [quarterlyReferralSourceSortField, setQuarterlyReferralSourceSortField] = useState<'referrals' | 'admissions' | null>(null);
+  const [quarterlyReferralSourceSortDirection, setQuarterlyReferralSourceSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [quarterlyReferralOutSortField, setQuarterlyReferralOutSortField] = useState<'referrals' | 'admissions' | null>(null);
+  const [quarterlyReferralOutSortDirection, setQuarterlyReferralOutSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [showAllQuarterlyReferralSources, setShowAllQuarterlyReferralSources] = useState(false);
+  const [showAllQuarterlyReferralOut, setShowAllQuarterlyReferralOut] = useState(false);
 
   const cardBg = useColorModeValue('white', 'gray.700');
   const statBg = useColorModeValue('blue.50', 'blue.900');
@@ -134,6 +148,20 @@ export const MetricsPage = () => {
     // Also normalize other case variations to "Treatment Center" for consistency
     normalized = normalized.replace(/treatment\s+center/gi, 'Treatment Center');
     normalized = normalized.replace(/Treatment\s+center/gi, 'Treatment Center');
+    
+    return normalized;
+  };
+
+  // Normalize referral sent to - fix "COV" and variations to "Cov Hills"
+  const normalizeReferralSentTo = (referralSentTo: string | undefined): string => {
+    if (!referralSentTo) return '';
+    
+    let normalized = referralSentTo.trim();
+    // Normalize "COV" and variations to "Cov Hills"
+    // Matches "COV", "Cov", "cov", "Cov hills", "cov hills", etc.
+    if (/^cov\s*hills?$/i.test(normalized) || normalized.toUpperCase() === 'COV') {
+      return 'Cov Hills';
+    }
     
     return normalized;
   };
@@ -184,7 +212,8 @@ export const MetricsPage = () => {
         // Normalize referral type to fix misspelling
         return {
           ...referralData,
-          referralType: normalizeReferralType(referralData.referralType)
+          referralType: normalizeReferralType(referralData.referralType),
+          referralSentTo: normalizeReferralSentTo(referralData.referralSentTo)
         };
       });
       setReferrals(data);
@@ -274,9 +303,13 @@ export const MetricsPage = () => {
       filtered = filtered.filter(ref => ref.levelOfCare === filterLevelOfCare);
     }
 
-    // Referral Sent To filter
+    // Lead Sent To filter
     if (filterReferralSentTo) {
-      filtered = filtered.filter(ref => ref.referralSentTo === filterReferralSentTo);
+      const normalizedFilter = normalizeReferralSentTo(filterReferralSentTo);
+      filtered = filtered.filter(ref => {
+        const normalizedRefSentTo = normalizeReferralSentTo(ref.referralSentTo);
+        return normalizedRefSentTo === normalizedFilter || ref.referralSentTo === filterReferralSentTo;
+      });
     }
 
     // Admitted filter
@@ -356,7 +389,7 @@ export const MetricsPage = () => {
       'Admitted',
       'Assigned To',
       'Level of Care',
-      'Referral Sent To'
+      'Lead Sent To'
     ];
 
     // Create CSV rows
@@ -513,7 +546,7 @@ export const MetricsPage = () => {
   ).sort();
   const uniqueInsuranceCompanies = Array.from(new Set(referrals.map(r => r.insuranceCompany).filter(Boolean))).sort();
   const uniqueLevelOfCare = Array.from(new Set(referrals.map(r => r.levelOfCare).filter(Boolean))).sort();
-  const uniqueReferralSentTo = Array.from(new Set(referrals.map(r => r.referralSentTo).filter(Boolean))).sort();
+  const uniqueReferralSentTo = Array.from(new Set(referrals.map(r => normalizeReferralSentTo(r.referralSentTo)).filter(Boolean))).sort();
 
   // Calculate metrics
   const totalReferrals = filteredReferrals.length;
@@ -536,7 +569,7 @@ export const MetricsPage = () => {
 
   // Group referrals sent TO various destinations
   const referralSentToStats = filteredReferrals.reduce((acc, ref) => {
-    const destination = ref.referralSentTo || 'Unknown';
+    const destination = normalizeReferralSentTo(ref.referralSentTo) || 'Unknown';
     if (!acc[destination]) {
       acc[destination] = { total: 0, admitted: 0 };
     }
@@ -677,10 +710,207 @@ export const MetricsPage = () => {
     }
   };
 
+  // Quarterly metrics sort handlers
+  const handleQuarterlyReferralSourceSort = (field: 'referrals' | 'admissions') => {
+    if (quarterlyReferralSourceSortField === field) {
+      setQuarterlyReferralSourceSortDirection(quarterlyReferralSourceSortDirection === 'desc' ? 'asc' : 'desc');
+    } else {
+      setQuarterlyReferralSourceSortField(field);
+      setQuarterlyReferralSourceSortDirection('desc');
+    }
+  };
+
+  const handleQuarterlyReferralOutSort = (field: 'referrals' | 'admissions') => {
+    if (quarterlyReferralOutSortField === field) {
+      setQuarterlyReferralOutSortDirection(quarterlyReferralOutSortDirection === 'desc' ? 'asc' : 'desc');
+    } else {
+      setQuarterlyReferralOutSortField(field);
+      setQuarterlyReferralOutSortDirection('desc');
+    }
+  };
+
   const displayReferralOut = showAllReferralOut 
     ? sortedReferralOutStats 
     : sortedReferralOutStats.slice(0, MAX_ITEMS_TO_SHOW);
   const hasMoreReferralOut = sortedReferralOutStats.length > MAX_ITEMS_TO_SHOW;
+
+  // Quarterly Metrics Functions
+  interface QuarterInfo {
+    label: string;
+    startDate: Date;
+    endDate: Date;
+    year: number;
+    quarter: number;
+  }
+
+  // Get the current quarter and previous 3 quarters
+  const getQuarterInfo = (date: Date): { year: number; quarter: number } => {
+    const month = date.getMonth() + 1; // getMonth() returns 0-11
+    let quarter: number;
+    if (month >= 1 && month <= 3) quarter = 1;
+    else if (month >= 4 && month <= 6) quarter = 2;
+    else if (month >= 7 && month <= 9) quarter = 3;
+    else quarter = 4;
+    return { year: date.getFullYear(), quarter };
+  };
+
+  const getQuarterDates = (year: number, quarter: number): { startDate: Date; endDate: Date } => {
+    let startMonth: number, endMonth: number;
+    if (quarter === 1) { startMonth = 0; endMonth = 2; } // Jan-Mar
+    else if (quarter === 2) { startMonth = 3; endMonth = 5; } // Apr-Jun
+    else if (quarter === 3) { startMonth = 6; endMonth = 8; } // Jul-Sep
+    else { startMonth = 9; endMonth = 11; } // Oct-Dec
+
+    const startDate = new Date(year, startMonth, 1);
+    const endDate = new Date(year, endMonth + 1, 0, 23, 59, 59, 999); // Last day of month
+
+    return { startDate, endDate };
+  };
+
+  const getQuartersToDisplay = (): QuarterInfo[] => {
+    const now = new Date();
+    const currentQuarter = getQuarterInfo(now);
+    const quarters: QuarterInfo[] = [];
+
+    // Start from current quarter and go back 3 quarters
+    let year = currentQuarter.year;
+    let quarter = currentQuarter.quarter;
+
+    for (let i = 0; i < 4; i++) {
+      const { startDate, endDate } = getQuarterDates(year, quarter);
+      quarters.push({
+        label: `Q${quarter} ${year}`,
+        startDate,
+        endDate,
+        year,
+        quarter
+      });
+
+      // Move to previous quarter
+      quarter--;
+      if (quarter === 0) {
+        quarter = 4;
+        year--;
+      }
+    }
+
+    return quarters.reverse(); // Reverse to show oldest to newest (Q1, Q2, Q3, Q4)
+  };
+
+  const getReferralQuarter = (referralDate: Date): { year: number; quarter: number } | null => {
+    if (!referralDate || isNaN(referralDate.getTime())) return null;
+    return getQuarterInfo(referralDate);
+  };
+
+  interface QuarterlyStats {
+    total: number;
+    admitted: number;
+    conversionRate: number;
+  }
+
+  // Calculate quarterly stats for referral sources
+  const calculateQuarterlyReferralSourceStats = () => {
+    const quarters = getQuartersToDisplay();
+    const stats: Record<string, Record<string, QuarterlyStats>> = {}; // [facility][quarter] = stats
+
+    filteredReferrals.forEach(ref => {
+      const facility = combineAllFacilities ? 'All Facilities' : (ref.referralSource || 'Unknown');
+      const refDate = ref.createdAt?.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
+      const quarterInfo = getReferralQuarter(refDate);
+
+      if (!quarterInfo) return;
+
+      const quarterKey = `Q${quarterInfo.quarter} ${quarterInfo.year}`;
+
+      // Check if this referral falls within any of our displayed quarters
+      const matchingQuarter = quarters.find(q => 
+        q.year === quarterInfo.year && q.quarter === quarterInfo.quarter
+      );
+
+      if (!matchingQuarter) return;
+
+      if (!stats[facility]) {
+        stats[facility] = {};
+      }
+      if (!stats[facility][quarterKey]) {
+        stats[facility][quarterKey] = { total: 0, admitted: 0, conversionRate: 0 };
+      }
+
+      stats[facility][quarterKey].total += 1;
+      if (ref.admitted === 'YES') {
+        stats[facility][quarterKey].admitted += 1;
+      }
+    });
+
+    // Calculate conversion rates
+    Object.keys(stats).forEach(facility => {
+      Object.keys(stats[facility]).forEach(quarter => {
+        const quarterStats = stats[facility][quarter];
+        quarterStats.conversionRate = quarterStats.total > 0 
+          ? (quarterStats.admitted / quarterStats.total) * 100 
+          : 0;
+      });
+    });
+
+    return { stats, quarters };
+  };
+
+  // Calculate quarterly stats for referral outs
+  const calculateQuarterlyReferralOutStats = () => {
+    const quarters = getQuartersToDisplay();
+    const stats: Record<string, Record<string, QuarterlyStats>> = {}; // [facility][quarter] = stats
+
+    filteredReferrals.forEach(ref => {
+      if (!ref.referralOut) return;
+
+      const facility = combineAllFacilities ? 'All Facilities' : ref.referralOut;
+      const refDate = ref.createdAt?.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
+      const quarterInfo = getReferralQuarter(refDate);
+
+      if (!quarterInfo) return;
+
+      const quarterKey = `Q${quarterInfo.quarter} ${quarterInfo.year}`;
+
+      // Check if this referral falls within any of our displayed quarters
+      const matchingQuarter = quarters.find(q => 
+        q.year === quarterInfo.year && q.quarter === quarterInfo.quarter
+      );
+
+      if (!matchingQuarter) return;
+
+      if (!stats[facility]) {
+        stats[facility] = {};
+      }
+      if (!stats[facility][quarterKey]) {
+        stats[facility][quarterKey] = { total: 0, admitted: 0, conversionRate: 0 };
+      }
+
+      stats[facility][quarterKey].total += 1;
+      if (ref.admitted === 'YES') {
+        stats[facility][quarterKey].admitted += 1;
+      }
+    });
+
+    // Calculate conversion rates
+    Object.keys(stats).forEach(facility => {
+      Object.keys(stats[facility]).forEach(quarter => {
+        const quarterStats = stats[facility][quarter];
+        quarterStats.conversionRate = quarterStats.total > 0 
+          ? (quarterStats.admitted / quarterStats.total) * 100 
+          : 0;
+      });
+    });
+
+    return { stats, quarters };
+  };
+
+  const calculatePercentageChange = (current: number, previous: number): number | null => {
+    if (previous === 0) return current > 0 ? 100 : null;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const quarterlyReferralSourceData = calculateQuarterlyReferralSourceStats();
+  const quarterlyReferralOutData = calculateQuarterlyReferralOutStats();
 
   if (loading) {
     return (
@@ -796,7 +1026,7 @@ export const MetricsPage = () => {
                         <Input
                           value={filterReferralSource}
                           onChange={(e) => setFilterReferralSource(e.target.value)}
-                          placeholder="Enter referral source"
+                          placeholder="Enter Referral Source"
                         />
                       </FormControl>
 
@@ -854,7 +1084,7 @@ export const MetricsPage = () => {
                       </FormControl>
 
                       <FormControl>
-                        <FormLabel>Referral Sent To</FormLabel>
+                        <FormLabel>Lead Sent To</FormLabel>
                         <Select
                           value={filterReferralSentTo}
                           onChange={(e) => setFilterReferralSentTo(e.target.value)}
@@ -1029,7 +1259,7 @@ export const MetricsPage = () => {
           </CardHeader>
           <CardBody>
             {Object.keys(referralSourceStats).length === 0 ? (
-              <Text>No referral source data available</Text>
+              <Text>No Referral Source data available</Text>
             ) : (
               <Box overflowX="auto">
                 <Table size="sm">
@@ -1199,6 +1429,356 @@ export const MetricsPage = () => {
                   </Box>
                 )}
               </Box>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Quarterly Metrics - Referral Source */}
+        <Card bg={cardBg} shadow="md">
+          <CardHeader>
+            <HStack justify="space-between" align="center">
+              <Heading size="md">Quarterly Metrics - Referral Source</Heading>
+              <Checkbox
+                isChecked={combineAllFacilities}
+                onChange={(e) => setCombineAllFacilities(e.target.checked)}
+              >
+                Combine All Facilities
+              </Checkbox>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            {Object.keys(quarterlyReferralSourceData.stats).length === 0 ? (
+              <Text>No quarterly referral source data available</Text>
+            ) : (
+              <>
+                <FormControl mb={4}>
+                  <FormLabel>Search by Referral Source</FormLabel>
+                  <Input
+                    value={quarterlyReferralSourceSearch}
+                    onChange={(e) => setQuarterlyReferralSourceSearch(e.target.value)}
+                    placeholder="Enter referral source name..."
+                  />
+                </FormControl>
+                <Box overflowX="auto">
+                  <Table size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th>Facility</Th>
+                        {quarterlyReferralSourceData.quarters.map((quarter) => (
+                          <Th key={quarter.label} isNumeric colSpan={3}>
+                            {quarter.label}
+                          </Th>
+                        ))}
+                      </Tr>
+                      <Tr>
+                        <Th></Th>
+                        {quarterlyReferralSourceData.quarters.map((quarter) => (
+                          <React.Fragment key={quarter.label}>
+                            <Th isNumeric fontSize="xs">
+                              <HStack spacing={1} justify="flex-end" cursor="pointer" onClick={() => handleQuarterlyReferralSourceSort('referrals')}>
+                                <Box>Referrals</Box>
+                                <Box as="span" className="material-icons" fontSize="14px">
+                                  {quarterlyReferralSourceSortField === 'referrals' 
+                                    ? (quarterlyReferralSourceSortDirection === 'desc' ? 'arrow_downward' : 'arrow_upward')
+                                    : 'unfold_more'}
+                                </Box>
+                              </HStack>
+                            </Th>
+                            <Th isNumeric fontSize="xs">
+                              <HStack spacing={1} justify="flex-end" cursor="pointer" onClick={() => handleQuarterlyReferralSourceSort('admissions')}>
+                                <Box>Admitted</Box>
+                                <Box as="span" className="material-icons" fontSize="14px">
+                                  {quarterlyReferralSourceSortField === 'admissions' 
+                                    ? (quarterlyReferralSourceSortDirection === 'desc' ? 'arrow_downward' : 'arrow_upward')
+                                    : 'unfold_more'}
+                                </Box>
+                              </HStack>
+                            </Th>
+                            <Th isNumeric fontSize="xs">Rate</Th>
+                          </React.Fragment>
+                        ))}
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {(() => {
+                        // Filter and sort the quarterly referral source data
+                        const filteredAndSorted = Object.entries(quarterlyReferralSourceData.stats)
+                          .filter(([facility]) => {
+                            if (!quarterlyReferralSourceSearch) return true;
+                            return facility.toLowerCase().includes(quarterlyReferralSourceSearch.toLowerCase());
+                          })
+                          .sort((a, b) => {
+                            // If sort field is set, use it
+                            if (quarterlyReferralSourceSortField) {
+                              const totalA = Object.values(a[1]).reduce((sum, q) => sum + (quarterlyReferralSourceSortField === 'referrals' ? q.total : q.admitted), 0);
+                              const totalB = Object.values(b[1]).reduce((sum, q) => sum + (quarterlyReferralSourceSortField === 'referrals' ? q.total : q.admitted), 0);
+                              return quarterlyReferralSourceSortDirection === 'desc' ? totalB - totalA : totalA - totalB;
+                            }
+                            // Default: Sort by total referrals across all quarters (descending)
+                            const totalA = Object.values(a[1]).reduce((sum, q) => sum + q.total, 0);
+                            const totalB = Object.values(b[1]).reduce((sum, q) => sum + q.total, 0);
+                            return totalB - totalA;
+                          });
+                        
+                        // Limit to top 25 or show all
+                        const displayItems = showAllQuarterlyReferralSources 
+                          ? filteredAndSorted 
+                          : filteredAndSorted.slice(0, MAX_ITEMS_TO_SHOW);
+                        const hasMore = filteredAndSorted.length > MAX_ITEMS_TO_SHOW;
+
+                        return (
+                          <>
+                            {displayItems.map(([facility, quarterStats]) => {
+                        const quarters = quarterlyReferralSourceData.quarters;
+                        const quarterKeys = quarters.map(q => q.label);
+                        
+                        return (
+                          <Tr key={facility}>
+                            <Td fontWeight="bold">{facility}</Td>
+                            {quarterKeys.map((quarterKey, index) => {
+                              const stats = quarterStats[quarterKey] || { total: 0, admitted: 0, conversionRate: 0 };
+                              const prevQuarterKey = index > 0 ? quarterKeys[index - 1] : null;
+                              const prevStats = prevQuarterKey ? (quarterStats[prevQuarterKey] || { total: 0, admitted: 0 }) : null;
+                              const totalChange = prevStats ? calculatePercentageChange(stats.total, prevStats.total) : null;
+                              const admittedChange = prevStats ? calculatePercentageChange(stats.admitted, prevStats.admitted) : null;
+                              
+                              return (
+                                <React.Fragment key={quarterKey}>
+                                  <Td isNumeric>
+                                    <VStack spacing={0} align="flex-end">
+                                      <Text>{stats.total}</Text>
+                                      {totalChange !== null && (
+                                        <Badge 
+                                          colorScheme={totalChange > 0 ? 'green' : totalChange < 0 ? 'red' : 'gray'}
+                                          fontSize="xs"
+                                        >
+                                          {totalChange > 0 ? '+' : ''}{totalChange.toFixed(1)}%
+                                        </Badge>
+                                      )}
+                                    </VStack>
+                                  </Td>
+                                  <Td isNumeric>
+                                    <VStack spacing={0} align="flex-end">
+                                      <Text>{stats.admitted}</Text>
+                                      {admittedChange !== null && (
+                                        <Badge 
+                                          colorScheme={admittedChange > 0 ? 'green' : admittedChange < 0 ? 'red' : 'gray'}
+                                          fontSize="xs"
+                                        >
+                                          {admittedChange > 0 ? '+' : ''}{admittedChange.toFixed(1)}%
+                                        </Badge>
+                                      )}
+                                    </VStack>
+                                  </Td>
+                                  <Td isNumeric>{stats.conversionRate.toFixed(1)}%</Td>
+                                </React.Fragment>
+                              );
+                            })}
+                          </Tr>
+                        );
+                      })}
+                            </>
+                          );
+                        })()}
+                  </Tbody>
+                </Table>
+                {(() => {
+                  const filteredAndSorted = Object.entries(quarterlyReferralSourceData.stats)
+                    .filter(([facility]) => {
+                      if (!quarterlyReferralSourceSearch) return true;
+                      return facility.toLowerCase().includes(quarterlyReferralSourceSearch.toLowerCase());
+                    });
+                  const hasMore = filteredAndSorted.length > MAX_ITEMS_TO_SHOW;
+                  
+                  return hasMore ? (
+                    <Box mt={4} textAlign="center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowAllQuarterlyReferralSources(!showAllQuarterlyReferralSources)}
+                      >
+                        {showAllQuarterlyReferralSources ? 'Show Less' : `Show More (${filteredAndSorted.length - MAX_ITEMS_TO_SHOW} more)`}
+                      </Button>
+                    </Box>
+                  ) : null;
+                })()}
+              </Box>
+              </>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Quarterly Metrics - Referral Out */}
+        <Card bg={cardBg} shadow="md">
+          <CardHeader>
+            <HStack justify="space-between" align="center">
+              <Heading size="md">Quarterly Metrics - Referral Out</Heading>
+              <Checkbox
+                isChecked={combineAllFacilities}
+                onChange={(e) => setCombineAllFacilities(e.target.checked)}
+              >
+                Combine All Facilities
+              </Checkbox>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            {Object.keys(quarterlyReferralOutData.stats).length === 0 ? (
+              <Text>No quarterly referral out data available</Text>
+            ) : (
+              <>
+                <FormControl mb={4}>
+                  <FormLabel>Search by Referral Source</FormLabel>
+                  <Input
+                    value={quarterlyReferralOutSearch}
+                    onChange={(e) => setQuarterlyReferralOutSearch(e.target.value)}
+                    placeholder="Enter referral source name..."
+                  />
+                </FormControl>
+                <Box overflowX="auto">
+                  <Table size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th>Facility</Th>
+                        {quarterlyReferralOutData.quarters.map((quarter) => (
+                          <Th key={quarter.label} isNumeric colSpan={3}>
+                            {quarter.label}
+                          </Th>
+                        ))}
+                      </Tr>
+                      <Tr>
+                        <Th></Th>
+                        {quarterlyReferralOutData.quarters.map((quarter) => (
+                          <React.Fragment key={quarter.label}>
+                            <Th isNumeric fontSize="xs">
+                              <HStack spacing={1} justify="flex-end" cursor="pointer" onClick={() => handleQuarterlyReferralOutSort('referrals')}>
+                                <Box>Referrals</Box>
+                                <Box as="span" className="material-icons" fontSize="14px">
+                                  {quarterlyReferralOutSortField === 'referrals' 
+                                    ? (quarterlyReferralOutSortDirection === 'desc' ? 'arrow_downward' : 'arrow_upward')
+                                    : 'unfold_more'}
+                                </Box>
+                              </HStack>
+                            </Th>
+                            <Th isNumeric fontSize="xs">
+                              <HStack spacing={1} justify="flex-end" cursor="pointer" onClick={() => handleQuarterlyReferralOutSort('admissions')}>
+                                <Box>Admitted</Box>
+                                <Box as="span" className="material-icons" fontSize="14px">
+                                  {quarterlyReferralOutSortField === 'admissions' 
+                                    ? (quarterlyReferralOutSortDirection === 'desc' ? 'arrow_downward' : 'arrow_upward')
+                                    : 'unfold_more'}
+                                </Box>
+                              </HStack>
+                            </Th>
+                            <Th isNumeric fontSize="xs">Rate</Th>
+                          </React.Fragment>
+                        ))}
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {(() => {
+                        // Filter and sort the quarterly referral out data
+                        const filteredAndSorted = Object.entries(quarterlyReferralOutData.stats)
+                          .filter(([facility]) => {
+                            if (!quarterlyReferralOutSearch) return true;
+                            return facility.toLowerCase().includes(quarterlyReferralOutSearch.toLowerCase());
+                          })
+                          .sort((a, b) => {
+                            // If sort field is set, use it
+                            if (quarterlyReferralOutSortField) {
+                              const totalA = Object.values(a[1]).reduce((sum, q) => sum + (quarterlyReferralOutSortField === 'referrals' ? q.total : q.admitted), 0);
+                              const totalB = Object.values(b[1]).reduce((sum, q) => sum + (quarterlyReferralOutSortField === 'referrals' ? q.total : q.admitted), 0);
+                              return quarterlyReferralOutSortDirection === 'desc' ? totalB - totalA : totalA - totalB;
+                            }
+                            // Default: Sort by total referrals across all quarters (descending)
+                            const totalA = Object.values(a[1]).reduce((sum, q) => sum + q.total, 0);
+                            const totalB = Object.values(b[1]).reduce((sum, q) => sum + q.total, 0);
+                            return totalB - totalA;
+                          });
+                        
+                        // Limit to top 25 or show all
+                        const displayItems = showAllQuarterlyReferralOut 
+                          ? filteredAndSorted 
+                          : filteredAndSorted.slice(0, MAX_ITEMS_TO_SHOW);
+                        const hasMore = filteredAndSorted.length > MAX_ITEMS_TO_SHOW;
+
+                        return (
+                          <>
+                            {displayItems.map(([facility, quarterStats]) => {
+                        const quarters = quarterlyReferralOutData.quarters;
+                        const quarterKeys = quarters.map(q => q.label);
+                        
+                        return (
+                          <Tr key={facility}>
+                            <Td fontWeight="bold">{facility}</Td>
+                            {quarterKeys.map((quarterKey, index) => {
+                              const stats = quarterStats[quarterKey] || { total: 0, admitted: 0, conversionRate: 0 };
+                              const prevQuarterKey = index > 0 ? quarterKeys[index - 1] : null;
+                              const prevStats = prevQuarterKey ? (quarterStats[prevQuarterKey] || { total: 0, admitted: 0 }) : null;
+                              const totalChange = prevStats ? calculatePercentageChange(stats.total, prevStats.total) : null;
+                              const admittedChange = prevStats ? calculatePercentageChange(stats.admitted, prevStats.admitted) : null;
+                              
+                              return (
+                                <React.Fragment key={quarterKey}>
+                                  <Td isNumeric>
+                                    <VStack spacing={0} align="flex-end">
+                                      <Text>{stats.total}</Text>
+                                      {totalChange !== null && (
+                                        <Badge 
+                                          colorScheme={totalChange > 0 ? 'green' : totalChange < 0 ? 'red' : 'gray'}
+                                          fontSize="xs"
+                                        >
+                                          {totalChange > 0 ? '+' : ''}{totalChange.toFixed(1)}%
+                                        </Badge>
+                                      )}
+                                    </VStack>
+                                  </Td>
+                                  <Td isNumeric>
+                                    <VStack spacing={0} align="flex-end">
+                                      <Text>{stats.admitted}</Text>
+                                      {admittedChange !== null && (
+                                        <Badge 
+                                          colorScheme={admittedChange > 0 ? 'green' : admittedChange < 0 ? 'red' : 'gray'}
+                                          fontSize="xs"
+                                        >
+                                          {admittedChange > 0 ? '+' : ''}{admittedChange.toFixed(1)}%
+                                        </Badge>
+                                      )}
+                                    </VStack>
+                                  </Td>
+                                  <Td isNumeric>{stats.conversionRate.toFixed(1)}%</Td>
+                                </React.Fragment>
+                              );
+                            })}
+                          </Tr>
+                        );
+                      })}
+                            </>
+                          );
+                        })()}
+                  </Tbody>
+                </Table>
+                {(() => {
+                  const filteredAndSorted = Object.entries(quarterlyReferralOutData.stats)
+                    .filter(([facility]) => {
+                      if (!quarterlyReferralOutSearch) return true;
+                      return facility.toLowerCase().includes(quarterlyReferralOutSearch.toLowerCase());
+                    });
+                  const hasMore = filteredAndSorted.length > MAX_ITEMS_TO_SHOW;
+                  
+                  return hasMore ? (
+                    <Box mt={4} textAlign="center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowAllQuarterlyReferralOut(!showAllQuarterlyReferralOut)}
+                      >
+                        {showAllQuarterlyReferralOut ? 'Show Less' : `Show More (${filteredAndSorted.length - MAX_ITEMS_TO_SHOW} more)`}
+                      </Button>
+                    </Box>
+                  ) : null;
+                })()}
+              </Box>
+              </>
             )}
           </CardBody>
         </Card>

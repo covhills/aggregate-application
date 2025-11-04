@@ -8,7 +8,7 @@ import { FormPage } from './pages/FormPage';
 import { AdminPage } from './pages/AdminPage';
 import { MetricsPage } from './pages/MetricsPage';
 import { SnakeGame } from './pages/SnakeGame';
-import { ReferrantContactsPage } from './pages/ReferrantContactsPage';
+import { ReferentContactsPage } from './pages/ReferrantContactsPage';
 import { ColorModeToggle } from './components/ColorModeToggle';
 import theme from './theme';
 import { signOut } from 'firebase/auth';
@@ -80,7 +80,7 @@ const AppHeader = () => {
                     colorScheme={isActive('/form') ? 'blue' : 'gray'}
                     size="sm"
                   >
-                    New Referral
+                    New Lead
                   </Button>
                   <Button
                     as={Link}
@@ -89,7 +89,7 @@ const AppHeader = () => {
                     colorScheme={isActive('/admin') ? 'blue' : 'gray'}
                     size="sm"
                   >
-                    Admin
+                    Client List
                   </Button>
                   <Button
                     as={Link}
@@ -107,7 +107,7 @@ const AppHeader = () => {
                     colorScheme={isActive('/referrant-contacts') ? 'blue' : 'gray'}
                     size="sm"
                   >
-                    Referrant Contacts
+                    Referent Contacts
                   </Button>
                 </HStack>
               )}
@@ -159,7 +159,7 @@ const AppHeader = () => {
                   fontSize="xs"
                   px={2}
                 >
-                  New Referral
+                  New Lead
                 </Button>
                 <Button
                   as={Link}
@@ -170,7 +170,7 @@ const AppHeader = () => {
                   fontSize="xs"
                   px={2}
                 >
-                  Admin
+                  Client List
                 </Button>
                 <Button
                   as={Link}
@@ -239,7 +239,7 @@ function App() {
               path="/referrant-contacts"
               element={
                 <ProtectedRoute>
-                  <ReferrantContactsPage />
+                  <ReferentContactsPage />
                 </ProtectedRoute>
               }
             />

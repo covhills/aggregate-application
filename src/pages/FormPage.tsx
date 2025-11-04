@@ -9,7 +9,6 @@ import {
   VStack,
   useToast,
   Select,
-  Checkbox,
   Card,
   CardBody,
   useColorModeValue,
@@ -43,6 +42,7 @@ interface FormData {
   insuranceCompany: string;
   insuranceType: string;
   privatePay: boolean;
+  payorType: string;
   admittedToReferrant: string;
   admitted: string;
   assignedTo: string;
@@ -62,6 +62,12 @@ export const FormPage = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [uniqueOutreachReps, setUniqueOutreachReps] = useState<string[]>([]);
   const [uniqueReferralTypes, setUniqueReferralTypes] = useState<string[]>([]);
+  const [uniqueReferralSources, setUniqueReferralSources] = useState<string[]>([]);
+  const [referralSourceSuggestions, setReferralSourceSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [uniqueReferralOuts, setUniqueReferralOuts] = useState<string[]>([]);
+  const [referralOutSuggestions, setReferralOutSuggestions] = useState<string[]>([]);
+  const [showReferralOutSuggestions, setShowReferralOutSuggestions] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
@@ -76,6 +82,7 @@ export const FormPage = () => {
     insuranceCompany: '',
     insuranceType: '',
     privatePay: false,
+    payorType: '',
     admittedToReferrant: '',
     admitted: '',
     assignedTo: '',
@@ -137,6 +144,20 @@ export const FormPage = () => {
     return normalized;
   };
 
+  // Normalize referral sent to - fix "COV" and variations to "Cov Hills"
+  const normalizeReferralSentTo = (referralSentTo: string | undefined): string => {
+    if (!referralSentTo) return '';
+    
+    let normalized = referralSentTo.trim();
+    // Normalize "COV" and variations to "Cov Hills"
+    // Matches "COV", "Cov", "cov", "Cov hills", "cov hills", etc.
+    if (/^cov\s*hills?$/i.test(normalized) || normalized.toUpperCase() === 'COV') {
+      return 'Cov Hills';
+    }
+    
+    return normalized;
+  };
+
 
   useEffect(() => {
     const fetchOutreachReps = async () => {
@@ -173,6 +194,38 @@ export const FormPage = () => {
           )
         ).sort() as string[];
         setUniqueReferralTypes(referralTypes);
+
+        // Fetch unique referral sources (clean "Accounts::::" prefix)
+        const referralSources = Array.from(
+          new Set(
+            querySnapshot.docs
+              .map(doc => {
+                const source = doc.data().referralSource;
+                if (!source) return null;
+                // Clean "Accounts::::" prefix if present
+                return cleanFieldValue(source);
+              })
+              .filter(Boolean)
+              .filter(source => source && source.trim() !== '')
+          )
+        ).sort() as string[];
+        setUniqueReferralSources(referralSources);
+
+        // Fetch unique referral outs (clean "Accounts::::" prefix)
+        const referralOuts = Array.from(
+          new Set(
+            querySnapshot.docs
+              .map(doc => {
+                const out = doc.data().referralOut;
+                if (!out) return null;
+                // Clean "Accounts::::" prefix if present
+                return cleanFieldValue(out);
+              })
+              .filter(Boolean)
+              .filter(out => out && out.trim() !== '')
+          )
+        ).sort() as string[];
+        setUniqueReferralOuts(referralOuts);
       } catch (error) {
         console.error('Error fetching outreach reps:', error);
       }
@@ -189,8 +242,50 @@ export const FormPage = () => {
         updated.admittedToReferrant = '';
       }
       
+      // Handle referral source autocomplete suggestions
+      if (field === 'referralSource' && typeof value === 'string') {
+        const inputValue = value.toLowerCase().trim();
+        if (inputValue.length >= 2 && uniqueReferralSources.length > 0) {
+          const filtered = uniqueReferralSources.filter(source =>
+            source.toLowerCase().includes(inputValue)
+          ).slice(0, 10); // Limit to 10 suggestions
+          setReferralSourceSuggestions(filtered);
+          setShowSuggestions(filtered.length > 0);
+        } else {
+          setReferralSourceSuggestions([]);
+          setShowSuggestions(false);
+        }
+      }
+
+      // Handle referral out autocomplete suggestions
+      if (field === 'referralOut' && typeof value === 'string') {
+        const inputValue = value.toLowerCase().trim();
+        if (inputValue.length >= 2 && uniqueReferralOuts.length > 0) {
+          const filtered = uniqueReferralOuts.filter(out =>
+            out.toLowerCase().includes(inputValue)
+          ).slice(0, 10); // Limit to 10 suggestions
+          setReferralOutSuggestions(filtered);
+          setShowReferralOutSuggestions(filtered.length > 0);
+        } else {
+          setReferralOutSuggestions([]);
+          setShowReferralOutSuggestions(false);
+        }
+      }
+      
       return updated;
     });
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    handleChange('referralSource', suggestion);
+    setShowSuggestions(false);
+    setReferralSourceSuggestions([]);
+  };
+
+  const handleReferralOutSuggestionClick = (suggestion: string) => {
+    handleChange('referralOut', suggestion);
+    setShowReferralOutSuggestions(false);
+    setReferralOutSuggestions([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -227,6 +322,9 @@ export const FormPage = () => {
         leadSource: formData.leadSource ? normalizeLeadSource(formData.leadSource) : formData.leadSource,
         outreachRep: formData.outreachRep ? normalizeOutreachRep(formData.outreachRep) : formData.outreachRep,
         referralType: formData.referralType ? normalizeReferralType(formData.referralType) : formData.referralType,
+        referralSentTo: formData.referralSentTo ? normalizeReferralSentTo(formData.referralSentTo) : formData.referralSentTo,
+        // Map payorType to privatePay: Private Pay = true, Insurance = false
+        privatePay: formData.payorType === 'Private Pay',
       };
 
       await addDoc(collection(db, 'referrals'), {
@@ -257,6 +355,7 @@ export const FormPage = () => {
         insuranceCompany: '',
         insuranceType: '',
         privatePay: false,
+        payorType: '',
         admittedToReferrant: '',
         admitted: '',
         assignedTo: '',
@@ -367,8 +466,21 @@ export const FormPage = () => {
     // Insurance Type mapping
     mapped.insuranceType = row.insuranceType || row['Insurance Type'] || row['insurance type'] || '';
 
-    // Private Pay mapping
-    mapped.privatePay = row.privatePay || row['Private Pay'] || row['private pay'] || '';
+    // Payor Type mapping - convert to privatePay boolean
+    // Support both "Payor Type" column and legacy "Private Pay" column
+    const payorType = row.payorType || row['Payor Type'] || row['payor type'] || '';
+    const privatePayValue = row.privatePay || row['Private Pay'] || row['private pay'] || '';
+    
+    // If Payor Type is specified, use it; otherwise fall back to Private Pay field
+    if (payorType) {
+      mapped.payorType = payorType;
+      mapped.privatePay = payorType === 'Private Pay';
+    } else {
+      // Legacy support: convert Private Pay field to Payor Type
+      const isPrivatePay = privatePayValue?.toLowerCase() === 'true' || privatePayValue === '1' || privatePayValue?.toLowerCase() === 'yes';
+      mapped.payorType = isPrivatePay ? 'Private Pay' : 'Insurance';
+      mapped.privatePay = isPrivatePay;
+    }
 
     // Admitted to Referrant mapping (only if Referral Out is populated)
     const referralOutValue = cleanFieldValue(row.referralOut || row['Referral Out'] || row['referral out'] || '');
@@ -388,7 +500,8 @@ export const FormPage = () => {
     mapped.levelOfCare = row.levelOfCare || row['Level of Care'] || row['level of care'] || row.program || row.Program || '';
 
     // Referral Sent To mapping
-    mapped.referralSentTo = row.referralSentTo || row['Referral Sent To'] || row['referral sent to'] || '';
+    const referralSentToRaw = row.referralSentTo || row['Referral Sent To'] || row['referral sent to'] || '';
+    mapped.referralSentTo = referralSentToRaw ? normalizeReferralSentTo(referralSentToRaw) : '';
 
     // Outreach Rep mapping (normalize spelling)
     const outreachRepRaw = row.outreachRep || row['Outreach Rep'] || row['outreach rep'] || '';
@@ -476,6 +589,11 @@ export const FormPage = () => {
             row.referralType = normalizeReferralType(row.referralType);
           }
 
+          // Normalize referralSentTo
+          if (row.referralSentTo) {
+            row.referralSentTo = normalizeReferralSentTo(row.referralSentTo);
+          }
+
           // Validate outreachRep when leadSource is Outreach
           if (row.leadSource === 'Outreach' && !row.outreachRep) {
             failedCount++;
@@ -483,8 +601,16 @@ export const FormPage = () => {
             continue;
           }
 
-          // Convert privatePay field
-          const privatePay = row.privatePay?.toLowerCase() === 'true' || row.privatePay === '1' || row.privatePay?.toLowerCase() === 'yes';
+          // Convert privatePay field or Payor Type
+          let privatePay = false;
+          const payorTypeValue = row.payorType || row['Payor Type'] || row['payor type'] || '';
+          if (payorTypeValue) {
+            // If Payor Type is specified, use it
+            privatePay = payorTypeValue === 'Private Pay';
+          } else {
+            // Legacy support: convert Private Pay field
+            privatePay = row.privatePay?.toLowerCase() === 'true' || row.privatePay === '1' || row.privatePay?.toLowerCase() === 'yes';
+          }
 
           // Parse createdDate from CSV and convert to Firestore Timestamp
           let createdAtTimestamp;
@@ -653,6 +779,18 @@ export const FormPage = () => {
                   </Select>
                 </FormControl>
 
+                <FormControl>
+                  <FormLabel>Lead Sent To</FormLabel>
+                  <Select
+                    value={formData.referralSentTo}
+                    onChange={(e) => handleChange('referralSentTo', e.target.value)}
+                    placeholder="Select destination"
+                  >
+                    <option value="SBR">SBR</option>
+                    <option value="Cov Hills">Cov Hills</option>
+                  </Select>
+                </FormControl>
+
                 {formData.leadSource === 'Outreach' && (
                   <FormControl isRequired>
                     <FormLabel>Outreach Rep</FormLabel>
@@ -674,11 +812,56 @@ export const FormPage = () => {
 
                 <FormControl>
                   <FormLabel>Referral Source</FormLabel>
-                  <Input
-                    value={formData.referralSource}
-                    onChange={(e) => handleChange('referralSource', e.target.value)}
-                    placeholder="Enter referral source"
-                  />
+                  <Box position="relative">
+                    <Input
+                      value={formData.referralSource}
+                      onChange={(e) => handleChange('referralSource', e.target.value)}
+                      onFocus={(e) => {
+                        const inputValue = e.target.value.toLowerCase().trim();
+                        if (inputValue.length >= 2 && uniqueReferralSources.length > 0) {
+                          const filtered = uniqueReferralSources.filter(source =>
+                            source.toLowerCase().includes(inputValue)
+                          ).slice(0, 10);
+                          setReferralSourceSuggestions(filtered);
+                          setShowSuggestions(filtered.length > 0);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Delay hiding suggestions to allow click events
+                        setTimeout(() => setShowSuggestions(false), 200);
+                      }}
+                      placeholder="Enter Referral Source"
+                    />
+                    {showSuggestions && referralSourceSuggestions.length > 0 && (
+                      <Box
+                        position="absolute"
+                        zIndex={1000}
+                        width="100%"
+                        mt={1}
+                        bg={cardBg}
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="md"
+                        boxShadow="lg"
+                        maxH="200px"
+                        overflowY="auto"
+                      >
+                        {referralSourceSuggestions.map((suggestion, index) => (
+                          <Box
+                            key={index}
+                            px={4}
+                            py={2}
+                            cursor="pointer"
+                            _hover={{ bg: 'gray.100' }}
+                            onClick={() => handleSuggestionClick(suggestion)}
+                            onMouseDown={(e) => e.preventDefault()} // Prevent blur before click
+                          >
+                            <Text fontSize="sm">{suggestion}</Text>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
                 </FormControl>
 
                 <FormControl>
@@ -686,7 +869,7 @@ export const FormPage = () => {
                   <Select
                     value={formData.referralType}
                     onChange={(e) => handleChange('referralType', e.target.value)}
-                    placeholder="Select referral type"
+                    placeholder="Select Referral Type"
                   >
                     {uniqueReferralTypes.map(type => (
                       <option key={type} value={type}>{type}</option>
@@ -695,13 +878,33 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Insurance Company</FormLabel>
-                  <Input
-                    value={formData.insuranceCompany}
-                    onChange={(e) => handleChange('insuranceCompany', e.target.value)}
-                    placeholder="Enter insurance company"
-                  />
+                  <FormLabel>Payor Type</FormLabel>
+                  <Select
+                    value={formData.payorType}
+                    onChange={(e) => {
+                      handleChange('payorType', e.target.value);
+                      // Clear insurance company if switching to Private Pay
+                      if (e.target.value === 'Private Pay') {
+                        handleChange('insuranceCompany', '');
+                      }
+                    }}
+                    placeholder="Select payor type"
+                  >
+                    <option value="Insurance">Insurance</option>
+                    <option value="Private Pay">Private Pay</option>
+                  </Select>
                 </FormControl>
+
+                {formData.payorType === 'Insurance' && (
+                  <FormControl>
+                    <FormLabel>Insurance Company</FormLabel>
+                    <Input
+                      value={formData.insuranceCompany}
+                      onChange={(e) => handleChange('insuranceCompany', e.target.value)}
+                      placeholder="Enter insurance company"
+                    />
+                  </FormControl>
+                )}
 
                 <FormControl>
                   <FormLabel>Insurance Type</FormLabel>
@@ -715,15 +918,6 @@ export const FormPage = () => {
                     <option value="EPO">EPO</option>
                     <option value="Union">Union</option>
                   </Select>
-                </FormControl>
-
-                <FormControl>
-                  <Checkbox
-                    isChecked={formData.privatePay}
-                    onChange={(e) => handleChange('privatePay', e.target.checked)}
-                  >
-                    Private Pay
-                  </Checkbox>
                 </FormControl>
 
                 <FormControl>
@@ -741,19 +935,7 @@ export const FormPage = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Referral Sent To</FormLabel>
-                  <Select
-                    value={formData.referralSentTo}
-                    onChange={(e) => handleChange('referralSentTo', e.target.value)}
-                    placeholder="Select destination"
-                  >
-                    <option value="SBR">SBR</option>
-                    <option value="Cov hills">Cov hills</option>
-                  </Select>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Admitted</FormLabel>
+                  <FormLabel>Admitted to SBR/COV</FormLabel>
                   <Select
                     value={formData.admitted}
                     onChange={(e) => handleChange('admitted', e.target.value)}
@@ -777,11 +959,56 @@ export const FormPage = () => {
 
                 <FormControl>
                   <FormLabel>Referral Out</FormLabel>
-                  <Input
-                    value={formData.referralOut}
-                    onChange={(e) => handleChange('referralOut', e.target.value)}
-                    placeholder="Enter referral out"
-                  />
+                  <Box position="relative">
+                    <Input
+                      value={formData.referralOut}
+                      onChange={(e) => handleChange('referralOut', e.target.value)}
+                      onFocus={(e) => {
+                        const inputValue = e.target.value.toLowerCase().trim();
+                        if (inputValue.length >= 2 && uniqueReferralOuts.length > 0) {
+                          const filtered = uniqueReferralOuts.filter(out =>
+                            out.toLowerCase().includes(inputValue)
+                          ).slice(0, 10);
+                          setReferralOutSuggestions(filtered);
+                          setShowReferralOutSuggestions(filtered.length > 0);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Delay hiding suggestions to allow click events
+                        setTimeout(() => setShowReferralOutSuggestions(false), 200);
+                      }}
+                      placeholder="Enter referral out"
+                    />
+                    {showReferralOutSuggestions && referralOutSuggestions.length > 0 && (
+                      <Box
+                        position="absolute"
+                        zIndex={1000}
+                        width="100%"
+                        mt={1}
+                        bg={cardBg}
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="md"
+                        boxShadow="lg"
+                        maxH="200px"
+                        overflowY="auto"
+                      >
+                        {referralOutSuggestions.map((suggestion, index) => (
+                          <Box
+                            key={index}
+                            px={4}
+                            py={2}
+                            cursor="pointer"
+                            _hover={{ bg: 'gray.100' }}
+                            onClick={() => handleReferralOutSuggestionClick(suggestion)}
+                            onMouseDown={(e) => e.preventDefault()} // Prevent blur before click
+                          >
+                            <Text fontSize="sm">{suggestion}</Text>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
                 </FormControl>
 
                 {formData.referralOut && (
@@ -794,6 +1021,7 @@ export const FormPage = () => {
                     >
                       <option value="YES">Yes</option>
                       <option value="NO">No</option>
+                      <option value="Returned to Referent">Returned to Referent</option>
                       <option value="Pending">Pending</option>
                     </Select>
                   </FormControl>
@@ -824,7 +1052,7 @@ export const FormPage = () => {
           <ModalBody>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Upload a CSV file with columns: First Name, Last Name, Call in Date, Created Date, Category, Lead Source, Referral Source, Referral Out, Referral Type, Insurance Company, Private Pay, Admitted to Referrant, Admitted, Assigned To, Level of Care, Referral Sent To
+                Upload a CSV file with columns: First Name, Last Name, Call in Date, Created Date, Category, Lead Source, Referral Source, Referral Out, Referral Type, Payor Type (or Private Pay), Insurance Company, Insurance Type, Admitted to Referrant, Admitted, Assigned To, Level of Care, Lead Sent To
               </Text>
 
               <Text fontSize="sm" fontWeight="bold">

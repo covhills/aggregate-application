@@ -153,7 +153,22 @@ export const AdminPage = () => {
       ...data,
       leadSource: normalizeLeadSource(data.leadSource),
       outreachRep: data.outreachRep ? normalizeOutreachRep(data.outreachRep) : data.outreachRep,
+      referralSentTo: normalizeReferralSentTo(data.referralSentTo),
     };
+  };
+
+  // Normalize referral sent to - fix "COV" and variations to "Cov Hills"
+  const normalizeReferralSentTo = (referralSentTo: string | undefined): string | undefined => {
+    if (!referralSentTo) return referralSentTo;
+    
+    let normalized = referralSentTo.trim();
+    // Normalize "COV" and variations to "Cov Hills"
+    // Matches "COV", "Cov", "cov", "Cov hills", "cov hills", etc.
+    if (/^cov\s*hills?$/i.test(normalized) || normalized.toUpperCase() === 'COV') {
+      return 'Cov Hills';
+    }
+    
+    return normalized;
   };
 
   useEffect(() => {
@@ -225,7 +240,11 @@ export const AdminPage = () => {
 
       // Filter by sent to
       if (activeSentTo) {
-        filteredData = filteredData.filter(ref => ref.referralSentTo === activeSentTo);
+        const normalizedFilter = normalizeReferralSentTo(activeSentTo);
+        filteredData = filteredData.filter(ref => {
+          const normalizedRefSentTo = normalizeReferralSentTo(ref.referralSentTo);
+          return normalizedRefSentTo === normalizedFilter || ref.referralSentTo === activeSentTo;
+        });
       }
 
       // Filter by lead source (with normalization)
@@ -578,24 +597,64 @@ export const AdminPage = () => {
     }
   };
 
-  // Debounced filter change for text inputs
+  // Debounced filter change for text inputs - accepts current values to avoid stale state
   const debouncedFilterChange = useCallback(
     (() => {
       let timeoutId: NodeJS.Timeout;
-      return () => {
+      return (values?: { name?: string; referralSource?: string; insurance?: string }) => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
-          handleFilterChange();
+          // Use the passed values or current state
+          const activeName = values?.name !== undefined ? values.name : filterName;
+          const activeReferralSource = values?.referralSource !== undefined ? values.referralSource : filterReferralSource;
+          const activeInsurance = values?.insurance !== undefined ? values.insurance : filterInsurance;
+          
+          // Check if all search fields are empty
+          const allSearchFieldsEmpty = (!activeName || activeName === '') && 
+                                       (!activeReferralSource || activeReferralSource === '') && 
+                                       (!activeInsurance || activeInsurance === '');
+          
+          // Check if there are any other active filters (date, dropdowns, etc.)
+          const hasOtherFilters = startDate || endDate || filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterCategory;
+          
+          // If all search fields are empty and no other filters are active, reset to Recent Referrals
+          if (allSearchFieldsEmpty && !hasOtherFilters) {
+            setIsFiltered(false);
+            setAllReferrals([]);
+            fetchReferrals();
+          } else {
+            handleFilterChange(values);
+          }
         }, 500);
       };
     })(),
-    [hasActiveFilters]
+    [filterName, filterReferralSource, filterInsurance, startDate, endDate, filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterCategory]
   );
 
-  // Immediate filter change for when fields are cleared
-  const immediateFilterChange = useCallback(() => {
-    handleFilterChange();
-  }, [hasActiveFilters]);
+  // Immediate filter change for when fields are cleared - accepts current values to avoid stale state
+  const immediateFilterChange = useCallback((values?: { name?: string; referralSource?: string; insurance?: string }) => {
+    // Use the passed values or current state
+    const activeName = values?.name !== undefined ? values.name : filterName;
+    const activeReferralSource = values?.referralSource !== undefined ? values.referralSource : filterReferralSource;
+    const activeInsurance = values?.insurance !== undefined ? values.insurance : filterInsurance;
+    
+    // Check if all search fields are empty
+    const allSearchFieldsEmpty = (!activeName || activeName === '') && 
+                                 (!activeReferralSource || activeReferralSource === '') && 
+                                 (!activeInsurance || activeInsurance === '');
+    
+    // Check if there are any other active filters (date, dropdowns, etc.)
+    const hasOtherFilters = startDate || endDate || filterProgram || filterAdmitted !== '' || filterSentTo || filterLeadSource || filterCategory;
+    
+    // If all search fields are empty and no other filters are active, reset to Recent Referrals
+    if (allSearchFieldsEmpty && !hasOtherFilters) {
+      setIsFiltered(false);
+      setAllReferrals([]);
+      fetchReferrals();
+    } else {
+      handleFilterChange(values);
+    }
+  }, [filterName, filterReferralSource, filterInsurance, startDate, endDate, filterProgram, filterAdmitted, filterSentTo, filterLeadSource, filterCategory]);
 
 
   // Get the data to display (filtered or unfiltered)
@@ -666,11 +725,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterName}
                       onChange={(e) => {
-                        setFilterName(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterName(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ name: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ name: newValue });
                         }
                       }}
                       size="sm"
@@ -683,11 +743,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterInsurance}
                       onChange={(e) => {
-                        setFilterInsurance(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterInsurance(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ insurance: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ insurance: newValue });
                         }
                       }}
                       size="sm"
@@ -734,7 +795,7 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl maxW={{ base: 'full', md: '200px' }}>
-                    <FormLabel fontSize="sm">Sent To</FormLabel>
+                    <FormLabel fontSize="sm">Lead sent to</FormLabel>
                     <Select
                       value={filterSentTo}
                       onChange={async (e) => {
@@ -746,7 +807,7 @@ export const AdminPage = () => {
                       placeholder="All"
                     >
                       <option value="SBR">SBR</option>
-                      <option value="Cov hills">Cov hills</option>
+                      <option value="Cov Hills">Cov Hills</option>
                     </Select>
                   </FormControl>
 
@@ -793,11 +854,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterReferralSource}
                       onChange={(e) => {
-                        setFilterReferralSource(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterReferralSource(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ referralSource: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ referralSource: newValue });
                         }
                       }}
                       size="sm"
@@ -851,11 +913,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterName}
                       onChange={(e) => {
-                        setFilterName(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterName(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ name: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ name: newValue });
                         }
                       }}
                       size="sm"
@@ -868,11 +931,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterInsurance}
                       onChange={(e) => {
-                        setFilterInsurance(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterInsurance(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ insurance: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ insurance: newValue });
                         }
                       }}
                       size="sm"
@@ -919,7 +983,7 @@ export const AdminPage = () => {
                   </FormControl>
 
                   <FormControl>
-                    <FormLabel fontSize="sm">Sent To</FormLabel>
+                    <FormLabel fontSize="sm">Lead sent to</FormLabel>
                     <Select
                       value={filterSentTo}
                       onChange={async (e) => {
@@ -931,7 +995,7 @@ export const AdminPage = () => {
                       placeholder="All"
                     >
                       <option value="SBR">SBR</option>
-                      <option value="Cov hills">Cov hills</option>
+                      <option value="Cov Hills">Cov Hills</option>
                     </Select>
                   </FormControl>
 
@@ -978,11 +1042,12 @@ export const AdminPage = () => {
                     <Input
                       value={filterReferralSource}
                       onChange={(e) => {
-                        setFilterReferralSource(e.target.value);
-                        if (e.target.value === '') {
-                          immediateFilterChange();
+                        const newValue = e.target.value;
+                        setFilterReferralSource(newValue);
+                        if (newValue === '') {
+                          immediateFilterChange({ referralSource: '' });
                         } else {
-                          debouncedFilterChange();
+                          debouncedFilterChange({ referralSource: newValue });
                         }
                       }}
                       size="sm"
@@ -1046,8 +1111,9 @@ export const AdminPage = () => {
                         <Th>Category</Th>
                         <Th>Lead Source</Th>
                         <Th>Referral Source</Th>
-                        <Th>Sent To</Th>
+                        <Th>Lead sent to</Th>
                         <Th>Admitted</Th>
+                        <Th>Admitted to Referrant</Th>
                         <Th>Date</Th>
                         <Th>Actions</Th>
                       </Tr>
@@ -1063,6 +1129,11 @@ export const AdminPage = () => {
                           <Td>
                             <Badge colorScheme={referral.admitted === 'YES' ? 'green' : referral.admitted === 'NO' ? 'red' : 'yellow'}>
                               {referral.admitted || 'Not set'}
+                            </Badge>
+                          </Td>
+                          <Td>
+                            <Badge colorScheme={referral.admittedToReferrant === 'YES' ? 'green' : referral.admittedToReferrant === 'NO' ? 'red' : referral.admittedToReferrant === 'Pending' ? 'yellow' : referral.admittedToReferrant === 'Returned to Referent' ? 'blue' : 'gray'}>
+                              {referral.admittedToReferrant || '-'}
                             </Badge>
                           </Td>
                           <Td>{formatDate(referral.createdAt)}</Td>
