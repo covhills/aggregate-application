@@ -48,36 +48,38 @@ import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, upda
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
-interface ReferrantContactData {
+interface ReferentContactData {
   id?: string;
   referralPartner: string;
   referralRep: string;
   referralContactInfo: string;
+  referentEmail: string;
   createdAt?: any;
   createdBy?: string;
 }
 
-export const ReferrantContactsPage = () => {
+export const ReferentContactsPage = () => {
   const { user } = useAuth();
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [contacts, setContacts] = useState<ReferrantContactData[]>([]);
-  const [allContacts, setAllContacts] = useState<ReferrantContactData[]>([]);
+  const [contacts, setContacts] = useState<ReferentContactData[]>([]);
+  const [allContacts, setAllContacts] = useState<ReferentContactData[]>([]);
   const [loading, setLoading] = useState(true);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
-  const [selectedContact, setSelectedContact] = useState<ReferrantContactData | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ReferentContactData | null>(null);
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   // Filter states
   const [filterReferralPartner, setFilterReferralPartner] = useState('');
   const [filterReferralRep, setFilterReferralRep] = useState('');
 
-  const [formData, setFormData] = useState<ReferrantContactData>({
+  const [formData, setFormData] = useState<ReferentContactData>({
     referralPartner: '',
     referralRep: '',
     referralContactInfo: '',
+    referentEmail: '',
   });
 
   const cardBg = useColorModeValue('white', 'gray.700');
@@ -94,14 +96,14 @@ export const ReferrantContactsPage = () => {
       const data = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      } as ReferrantContactData));
+      } as ReferentContactData));
       setAllContacts(data);
       applyFilters(data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load referrant contacts',
+        description: 'Failed to load referent contacts',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -111,7 +113,7 @@ export const ReferrantContactsPage = () => {
     }
   };
 
-  const applyFilters = (dataToFilter: ReferrantContactData[]) => {
+  const applyFilters = (dataToFilter: ReferentContactData[]) => {
     let filtered = [...dataToFilter];
 
     // Filter by Referral Partner
@@ -139,7 +141,7 @@ export const ReferrantContactsPage = () => {
     }
   }, [filterReferralPartner, filterReferralRep, allContacts]);
 
-  const handleChange = (field: keyof ReferrantContactData, value: string) => {
+  const handleChange = (field: keyof ReferentContactData, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value,
@@ -167,13 +169,14 @@ export const ReferrantContactsPage = () => {
         referralPartner: formData.referralPartner,
         referralRep: formData.referralRep,
         referralContactInfo: formData.referralContactInfo,
+        referentEmail: formData.referentEmail,
         createdAt: serverTimestamp(),
         createdBy: user?.email || 'unknown',
       });
 
       toast({
         title: 'Success',
-        description: 'Referrant contact created successfully',
+        description: 'Referent contact created successfully',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -184,16 +187,17 @@ export const ReferrantContactsPage = () => {
         referralPartner: '',
         referralRep: '',
         referralContactInfo: '',
+        referentEmail: '',
       });
       onClose();
       
       // Refresh contacts list
       fetchContacts();
     } catch (error) {
-      console.error('Error creating referrant contact:', error);
+      console.error('Error creating referent contact:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create referrant contact',
+        description: 'Failed to create referent contact',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -203,12 +207,13 @@ export const ReferrantContactsPage = () => {
     }
   };
 
-  const handleEdit = (contact: ReferrantContactData) => {
+  const handleEdit = (contact: ReferentContactData) => {
     setSelectedContact(contact);
     setFormData({
       referralPartner: contact.referralPartner || '',
       referralRep: contact.referralRep || '',
       referralContactInfo: contact.referralContactInfo || '',
+      referentEmail: contact.referentEmail || '',
     });
     onEditOpen();
   };
@@ -237,11 +242,12 @@ export const ReferrantContactsPage = () => {
         referralPartner: formData.referralPartner,
         referralRep: formData.referralRep,
         referralContactInfo: formData.referralContactInfo,
+        referentEmail: formData.referentEmail,
       });
 
       toast({
         title: 'Success',
-        description: 'Referrant contact updated successfully',
+        description: 'Referent contact updated successfully',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -252,10 +258,10 @@ export const ReferrantContactsPage = () => {
       // Refresh contacts list
       fetchContacts();
     } catch (error) {
-      console.error('Error updating referrant contact:', error);
+      console.error('Error updating referent contact:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update referrant contact',
+        description: 'Failed to update referent contact',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -265,7 +271,7 @@ export const ReferrantContactsPage = () => {
     }
   };
 
-  const handleDeleteClick = (contact: ReferrantContactData) => {
+  const handleDeleteClick = (contact: ReferentContactData) => {
     setSelectedContact(contact);
     onDeleteOpen();
   };
@@ -278,7 +284,7 @@ export const ReferrantContactsPage = () => {
       
       toast({
         title: 'Success',
-        description: 'Referrant contact deleted successfully',
+        description: 'Referent contact deleted successfully',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -289,10 +295,10 @@ export const ReferrantContactsPage = () => {
       // Refresh contacts list
       fetchContacts();
     } catch (error) {
-      console.error('Error deleting referrant contact:', error);
+      console.error('Error deleting referent contact:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete referrant contact',
+        description: 'Failed to delete referent contact',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -311,6 +317,7 @@ export const ReferrantContactsPage = () => {
       referralPartner: '',
       referralRep: '',
       referralContactInfo: '',
+      referentEmail: '',
     });
     setSelectedContact(null);
     onClose();
@@ -321,6 +328,7 @@ export const ReferrantContactsPage = () => {
       referralPartner: '',
       referralRep: '',
       referralContactInfo: '',
+      referentEmail: '',
     });
     setSelectedContact(null);
     onEditClose();
@@ -426,7 +434,7 @@ export const ReferrantContactsPage = () => {
         <Card width="full" bg={cardBg} shadow="lg">
           <CardBody>
             <HStack justify="space-between" mb={6}>
-              <Heading size="md">Referrant Contacts</Heading>
+              <Heading size="md">Referent Contacts</Heading>
               <Button
                 onClick={onOpen}
                 colorScheme="blue"
@@ -442,7 +450,7 @@ export const ReferrantContactsPage = () => {
                 <Text>Loading contacts...</Text>
               </VStack>
             ) : contacts.length === 0 ? (
-              <Text>No referrant contacts found</Text>
+              <Text>No referent contacts found</Text>
             ) : (
               <Box width="full" overflowX="auto">
                 <Table size="sm">
@@ -450,6 +458,7 @@ export const ReferrantContactsPage = () => {
                     <Tr>
                       <Th>Referral Partner</Th>
                       <Th>Referral Rep</Th>
+                      <Th>Referent Email</Th>
                       <Th>Contact Info</Th>
                       <Th>Created Date</Th>
                       <Th>Created By</Th>
@@ -461,6 +470,7 @@ export const ReferrantContactsPage = () => {
                       <Tr key={contact.id}>
                         <Td fontWeight="medium">{contact.referralPartner}</Td>
                         <Td>{contact.referralRep}</Td>
+                        <Td>{contact.referentEmail || '-'}</Td>
                         <Td>
                           <Box maxW="400px">
                             <Text noOfLines={3}>
@@ -502,7 +512,7 @@ export const ReferrantContactsPage = () => {
       <Modal isOpen={isOpen} onClose={handleModalClose} size="md">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Add New Referrant Contact</ModalHeader>
+          <ModalHeader>Add New Referent Contact</ModalHeader>
           <ModalCloseButton />
           <form onSubmit={handleSubmit}>
             <ModalBody>
@@ -522,6 +532,16 @@ export const ReferrantContactsPage = () => {
                     value={formData.referralRep}
                     onChange={(e) => handleChange('referralRep', e.target.value)}
                     placeholder="Enter referral rep"
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Referent Email</FormLabel>
+                  <Input
+                    type="email"
+                    value={formData.referentEmail}
+                    onChange={(e) => handleChange('referentEmail', e.target.value)}
+                    placeholder="Enter referent email"
                   />
                 </FormControl>
 
@@ -557,7 +577,7 @@ export const ReferrantContactsPage = () => {
       <Modal isOpen={isEditOpen} onClose={handleEditModalClose} size="md">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Edit Referrant Contact</ModalHeader>
+          <ModalHeader>Edit Referent Contact</ModalHeader>
           <ModalCloseButton />
           <form onSubmit={handleUpdate}>
             <ModalBody>
@@ -577,6 +597,16 @@ export const ReferrantContactsPage = () => {
                     value={formData.referralRep}
                     onChange={(e) => handleChange('referralRep', e.target.value)}
                     placeholder="Enter referral rep"
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Referent Email</FormLabel>
+                  <Input
+                    type="email"
+                    value={formData.referentEmail}
+                    onChange={(e) => handleChange('referentEmail', e.target.value)}
+                    placeholder="Enter referent email"
                   />
                 </FormControl>
 
@@ -617,7 +647,7 @@ export const ReferrantContactsPage = () => {
         <AlertDialogOverlay>
           <AlertDialogContent>
             <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Referrant Contact
+              Delete Referent Contact
             </AlertDialogHeader>
             <AlertDialogBody>
               Are you sure you want to delete the contact for {selectedContact?.referralPartner} - {selectedContact?.referralRep}?
