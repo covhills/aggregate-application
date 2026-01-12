@@ -75,6 +75,7 @@ interface ReferralData {
   category?: string;
   admittedToReferrant?: string;
   assignedTo?: string;
+  callInDate?: string;
 }
 
 export const AdminPage = () => {
@@ -206,12 +207,21 @@ export const AdminPage = () => {
       // Apply all filters client-side for reliable filtering
       let filteredData = data;
 
-      // Filter by date range
+      // Filter by date range - use callInDate if available, otherwise fall back to createdAt
       if (activeStartDate || activeEndDate) {
         filteredData = filteredData.filter(ref => {
-          if (!ref.createdAt) return false;
+          // Prefer callInDate, fall back to createdAt if callInDate is not available
+          let refDate: Date | null = null;
+          
+          if (ref.callInDate) {
+            // callInDate is stored as YYYY-MM-DD string
+            refDate = new Date(ref.callInDate + 'T00:00:00');
+          } else if (ref.createdAt) {
+            refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
+          }
+          
+          if (!refDate || isNaN(refDate.getTime())) return false;
 
-          const refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
           // Ensure start date is at beginning of day (00:00:00)
           const start = activeStartDate ? new Date(activeStartDate + 'T00:00:00') : null;
           // Ensure end date is at end of day (23:59:59.999)
@@ -458,10 +468,35 @@ export const AdminPage = () => {
     onDeleteOpen();
   };
 
-  const formatDate = (date: any) => {
-    if (!date) return 'N/A';
-    if (date.toDate) return date.toDate().toLocaleString();
-    return new Date(date).toLocaleString();
+  const formatDate = (callInDate: string | undefined, createdAt: any) => {
+    // Prefer callInDate if available, otherwise use createdAt
+    if (callInDate) {
+      try {
+        const date = new Date(callInDate + 'T00:00:00');
+        if (!isNaN(date.getTime())) {
+          return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+        }
+      } catch (e) {
+        // Fall through to createdAt
+      }
+    }
+    
+    // Fall back to createdAt
+    if (!createdAt) return 'N/A';
+    if (createdAt.toDate) return createdAt.toDate().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return new Date(createdAt).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
   };
 
   // Helper function to format date as YYYY-MM-DD
@@ -669,9 +704,28 @@ export const AdminPage = () => {
       if (nameA > nameB) return sortAsc ? 1 : -1;
       return 0;
     } else {
-      const dateA = a.createdAt?.toDate?.() || new Date(0);
-      const dateB = b.createdAt?.toDate?.() || new Date(0);
-      return sortAsc ? dateA - dateB : dateB - dateA;
+      // Use callInDate if available, otherwise fall back to createdAt
+      let dateA: Date;
+      if (a.callInDate) {
+        dateA = new Date(a.callInDate + 'T00:00:00');
+        if (isNaN(dateA.getTime())) {
+          dateA = a.createdAt?.toDate?.() || new Date(0);
+        }
+      } else {
+        dateA = a.createdAt?.toDate?.() || new Date(0);
+      }
+      
+      let dateB: Date;
+      if (b.callInDate) {
+        dateB = new Date(b.callInDate + 'T00:00:00');
+        if (isNaN(dateB.getTime())) {
+          dateB = b.createdAt?.toDate?.() || new Date(0);
+        }
+      } else {
+        dateB = b.createdAt?.toDate?.() || new Date(0);
+      }
+      
+      return sortAsc ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
     }
   });
 
@@ -1136,7 +1190,7 @@ export const AdminPage = () => {
                               {referral.admittedToReferrant || '-'}
                             </Badge>
                           </Td>
-                          <Td>{formatDate(referral.createdAt)}</Td>
+                          <Td>{formatDate(referral.callInDate, referral.createdAt)}</Td>
                           <Td>
                             <HStack spacing={2}>
                               <IconButton
@@ -1424,8 +1478,8 @@ export const AdminPage = () => {
                   <Text>{selectedReferral?.assignedTo || '-'}</Text>
                 </Box>
                 <Box>
-                  <Text fontWeight="bold">Created At:</Text>
-                  <Text>{formatDate(selectedReferral?.createdAt)}</Text>
+                  <Text fontWeight="bold">Call in Date:</Text>
+                  <Text>{formatDate(selectedReferral?.callInDate, selectedReferral?.createdAt)}</Text>
                 </Box>
                 <Box>
                   <Text fontWeight="bold">Created By:</Text>

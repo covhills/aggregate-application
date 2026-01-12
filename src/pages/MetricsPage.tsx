@@ -234,12 +234,21 @@ export const MetricsPage = () => {
   const filterReferrals = () => {
     let filtered = [...referrals];
 
-    // Date range filter
+    // Date range filter - use callInDate if available, otherwise fall back to createdAt
     if (startDate || endDate) {
       filtered = filtered.filter(ref => {
-        if (!ref.createdAt) return false;
+        // Prefer callInDate, fall back to createdAt if callInDate is not available
+        let refDate: Date | null = null;
+        
+        if (ref.callInDate) {
+          // callInDate is stored as YYYY-MM-DD string
+          refDate = new Date(ref.callInDate + 'T00:00:00');
+        } else if (ref.createdAt) {
+          refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
+        }
+        
+        if (!refDate || isNaN(refDate.getTime())) return false;
 
-        const refDate = ref.createdAt.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
         // Ensure start date is at beginning of day (00:00:00)
         const start = startDate ? new Date(startDate + 'T00:00:00') : null;
         // Ensure end date is at end of day (23:59:59.999)
@@ -797,7 +806,16 @@ export const MetricsPage = () => {
     return quarters.reverse(); // Reverse to show oldest to newest (Q1, Q2, Q3, Q4)
   };
 
-  const getReferralQuarter = (referralDate: Date): { year: number; quarter: number } | null => {
+  const getReferralQuarter = (referral: ReferralData): { year: number; quarter: number } | null => {
+    // Prefer callInDate, fall back to createdAt if callInDate is not available
+    let referralDate: Date | null = null;
+    
+    if (referral.callInDate) {
+      referralDate = new Date(referral.callInDate + 'T00:00:00');
+    } else if (referral.createdAt) {
+      referralDate = referral.createdAt.toDate ? referral.createdAt.toDate() : new Date(referral.createdAt);
+    }
+    
     if (!referralDate || isNaN(referralDate.getTime())) return null;
     return getQuarterInfo(referralDate);
   };
@@ -815,8 +833,7 @@ export const MetricsPage = () => {
 
     filteredReferrals.forEach(ref => {
       const facility = combineAllFacilities ? 'All Facilities' : (ref.referralSource || 'Unknown');
-      const refDate = ref.createdAt?.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
-      const quarterInfo = getReferralQuarter(refDate);
+      const quarterInfo = getReferralQuarter(ref);
 
       if (!quarterInfo) return;
 
@@ -864,8 +881,7 @@ export const MetricsPage = () => {
       if (!ref.referralOut) return;
 
       const facility = combineAllFacilities ? 'All Facilities' : ref.referralOut;
-      const refDate = ref.createdAt?.toDate ? ref.createdAt.toDate() : new Date(ref.createdAt);
-      const quarterInfo = getReferralQuarter(refDate);
+      const quarterInfo = getReferralQuarter(ref);
 
       if (!quarterInfo) return;
 
