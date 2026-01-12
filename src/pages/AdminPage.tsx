@@ -17,6 +17,7 @@ import {
   IconButton,
   Text,
   Spinner,
+  Progress,
   AlertDialog,
   AlertDialogBody,
   AlertDialogFooter,
@@ -54,7 +55,8 @@ import {
   query,
   orderBy,
   limit,
-  where
+  where,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -109,7 +111,10 @@ export const AdminPage = () => {
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const { isOpen: isViewOpen, onOpen: onViewOpen, onClose: onViewClose } = useDisclosure();
+  const { isOpen: isMigrateOpen, onOpen: onMigrateOpen, onClose: onMigrateClose } = useDisclosure();
   const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState({ processed: 0, total: 0, updated: 0 });
 
   const cardBg = useColorModeValue('white', 'gray.700');
 
@@ -557,6 +562,126 @@ export const AdminPage = () => {
     await handleFilterChange({ startDate: newStartDate, endDate: newEndDate });
   };
 
+  // Helper function to format date as YYYY-MM-DD from a Date object
+  const formatDateToString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Migration function to backfill callInDate from createdAt
+  const migrateCallInDates = async () => {
+    try {
+      setIsMigrating(true);
+      setMigrationProgress({ processed: 0, total: 0, updated: 0 });
+      onMigrateOpen();
+
+      // Fetch all referrals
+      const q = query(collection(db, 'referrals'));
+      const querySnapshot = await getDocs(q);
+      const allDocs = querySnapshot.docs;
+      
+      setMigrationProgress({ processed: 0, total: allDocs.length, updated: 0 });
+
+      // Filter referrals that need updating (missing callInDate but have createdAt)
+      const referralsToUpdate = allDocs
+        .map(doc => ({
+          id: doc.id,
+          data: doc.data()
+        }))
+        .filter(({ data }) => {
+          // Only update if callInDate is missing or empty, and createdAt exists
+          return (!data.callInDate || data.callInDate === '') && data.createdAt;
+        });
+
+      if (referralsToUpdate.length === 0) {
+        toast({
+          title: 'Migration Complete',
+          description: 'All referrals already have callInDate set',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsMigrating(false);
+        onMigrateClose();
+        return;
+      }
+
+      setMigrationProgress({ processed: 0, total: referralsToUpdate.length, updated: 0 });
+
+      // Process in batches of 500 (Firestore limit)
+      const batchSize = 500;
+      let updatedCount = 0;
+
+      for (let i = 0; i < referralsToUpdate.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const batchEnd = Math.min(i + batchSize, referralsToUpdate.length);
+
+        for (let j = i; j < batchEnd; j++) {
+          const { id, data } = referralsToUpdate[j];
+          const createdAt = data.createdAt;
+          
+          // Convert createdAt to callInDate string (YYYY-MM-DD)
+          let callInDate = '';
+          try {
+            const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+            if (!isNaN(date.getTime())) {
+              callInDate = formatDateToString(date);
+            }
+          } catch (e) {
+            console.error(`Error parsing date for referral ${id}:`, e);
+            continue;
+          }
+
+          if (callInDate) {
+            const docRef = doc(db, 'referrals', id);
+            batch.update(docRef, { callInDate });
+            updatedCount++;
+          }
+        }
+
+        await batch.commit();
+        setMigrationProgress({ 
+          processed: batchEnd, 
+          total: referralsToUpdate.length, 
+          updated: updatedCount 
+        });
+      }
+
+      toast({
+        title: 'Migration Complete',
+        description: `Successfully updated ${updatedCount} referral(s) with callInDate`,
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      });
+
+      // Refresh the data
+      if (isFiltered) {
+        await fetchAllReferralsWithFilters();
+      } else {
+        await fetchReferrals();
+      }
+
+      // Close modal after a short delay to show completion
+      setTimeout(() => {
+        onMigrateClose();
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error migrating callInDate:', error);
+      toast({
+        title: 'Migration Error',
+        description: 'Failed to migrate callInDate. Please try again.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
 
   const handleRefresh = async () => {
     if (isFiltered) {
@@ -1130,9 +1255,14 @@ export const AdminPage = () => {
               {sortAsc ? 'Asc' : 'Desc'}
             </Button>
           </HStack>
-          <Button onClick={handleRefresh} size="sm" ml="auto">
-            Refresh
-          </Button>
+          <HStack spacing={2} ml="auto">
+            <Button onClick={migrateCallInDates} size="sm" colorScheme="orange" variant="outline" isDisabled={isMigrating}>
+              Migrate Dates
+            </Button>
+            <Button onClick={handleRefresh} size="sm">
+              Refresh
+            </Button>
+          </HStack>
         </HStack>
 
         <Box width="full" p={6} borderWidth={1} borderRadius={8} boxShadow="lg" bg={cardBg}>
@@ -1489,6 +1619,53 @@ export const AdminPage = () => {
             </ModalBody>
             <ModalFooter>
               <Button onClick={onViewClose}>Close</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Migration Progress Modal */}
+        <Modal isOpen={isMigrateOpen} onClose={onMigrateClose} closeOnOverlayClick={false} closeOnEsc={false}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Migrating Call In Dates</ModalHeader>
+            <ModalBody>
+              <VStack spacing={4}>
+                <Text>
+                  Updating existing referrals to populate callInDate from createdAt...
+                </Text>
+                {migrationProgress.total > 0 && (
+                  <>
+                    <Box width="full">
+                      <Progress 
+                        value={(migrationProgress.processed / migrationProgress.total) * 100} 
+                        colorScheme="blue" 
+                        size="lg"
+                      />
+                    </Box>
+                    <Text fontSize="sm" color="gray.600">
+                      Processed: {migrationProgress.processed} / {migrationProgress.total}
+                    </Text>
+                    <Text fontSize="sm" color="green.600">
+                      Updated: {migrationProgress.updated} referral(s)
+                    </Text>
+                  </>
+                )}
+                {isMigrating && (
+                  <HStack>
+                    <Spinner size="sm" />
+                    <Text fontSize="sm">Please wait...</Text>
+                  </HStack>
+                )}
+              </VStack>
+            </ModalBody>
+            <ModalFooter>
+              <Button 
+                onClick={onMigrateClose} 
+                isDisabled={isMigrating}
+                colorScheme="blue"
+              >
+                {isMigrating ? 'Processing...' : 'Close'}
+              </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
