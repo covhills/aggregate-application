@@ -2,21 +2,41 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Aggregator App</title>
+    <title>Covhills App</title>
     <script type="text/javascript">
       // Single Page Apps for GitHub Pages
+      // This handles the base path /aggregate-application/
       var pathSegmentsToKeep = 1;
 
       var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+      var basePath = '/aggregate-application';
+      
+      // If we're not already on the base path, redirect to it
+      if (!l.pathname.startsWith(basePath + '/')) {
+        l.replace(
+          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+          basePath + '/?/' +
+          l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+          (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+          l.hash
+        );
+      } else {
+        // Already on base path, just redirect to index.html
+        l.replace(
+          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+          basePath + '/index.html' +
+          (l.search ? l.search : '') +
+          l.hash
+        );
+      }
     </script>
   </head>
   <body>
+    <script>
+      // Fallback: redirect to index.html after a short delay
+      setTimeout(function() {
+        window.location.replace('/aggregate-application/index.html');
+      }, 100);
+    </script>
   </body>
 </html>
