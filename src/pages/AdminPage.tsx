@@ -474,8 +474,8 @@ export const AdminPage = () => {
   };
 
   const formatDate = (callInDate: string | undefined, createdAt: any) => {
-    // Prefer callInDate if available, otherwise use createdAt
-    if (callInDate) {
+    // Only show callInDate - do not fall back to createdAt
+    if (callInDate && callInDate.trim() !== '') {
       try {
         const date = new Date(callInDate + 'T00:00:00');
         if (!isNaN(date.getTime())) {
@@ -486,22 +486,13 @@ export const AdminPage = () => {
           });
         }
       } catch (e) {
-        // Fall through to createdAt
+        // Invalid date format
+        return 'N/A';
       }
     }
     
-    // Fall back to createdAt
-    if (!createdAt) return 'N/A';
-    if (createdAt.toDate) return createdAt.toDate().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    return new Date(createdAt).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
+    // If callInDate is not available, show N/A (do not use createdAt)
+    return 'N/A';
   };
 
   // Helper function to format date as YYYY-MM-DD
