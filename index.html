@@ -18,13 +18,27 @@
     <script type="text/javascript">
       // Single Page Apps for GitHub Pages
       (function(l) {
-        if (l.search[1] === '/' ) {
-          var decoded = l.search.slice(1).split('&').map(function(s) {
-            return s.replace(/~and~/g, '&')
-          }).join('?');
-          window.history.replaceState(null, null,
-              l.pathname.slice(0, -1) + decoded + l.hash
-          );
+        // Handle redirect from 404.html
+        if (l.search) {
+          // Check if search starts with / (redirected path)
+          if (l.search[1] === '/') {
+            var decoded = l.search.slice(1).split('&').map(function(s) {
+              return s.replace(/~and~/g, '&')
+            }).join('?');
+            window.history.replaceState(null, null,
+                l.pathname.slice(0, -1) + decoded + l.hash
+            );
+          } else {
+            // Handle other query parameters - preserve them but remove the redirect path if present
+            var params = new URLSearchParams(l.search);
+            if (params.has('/')) {
+              var path = params.get('/');
+              params.delete('/');
+              var newPath = '/aggregate-application' + path;
+              var newSearch = params.toString() ? '?' + params.toString() : '';
+              window.history.replaceState(null, null, newPath + newSearch + l.hash);
+            }
+          }
         }
       }(window.location))
     </script>

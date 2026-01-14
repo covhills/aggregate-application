@@ -2,41 +2,46 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url=/aggregate-application/index.html">
     <title>Covhills App</title>
     <script type="text/javascript">
       // Single Page Apps for GitHub Pages
       // This handles the base path /aggregate-application/
-      var pathSegmentsToKeep = 1;
-
-      var l = window.location;
-      var basePath = '/aggregate-application';
-      
-      // If we're not already on the base path, redirect to it
-      if (!l.pathname.startsWith(basePath + '/')) {
-        l.replace(
-          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-          basePath + '/?/' +
-          l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-          (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-          l.hash
-        );
-      } else {
-        // Already on base path, just redirect to index.html
-        l.replace(
-          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-          basePath + '/index.html' +
-          (l.search ? l.search : '') +
-          l.hash
-        );
-      }
+      (function() {
+        var pathSegmentsToKeep = 1;
+        var basePath = '/aggregate-application';
+        var l = window.location;
+        
+        // If we're on a 404 page, redirect to index.html with the path as a query parameter
+        if (l.pathname.includes('404.html') || (!l.pathname.includes('index.html') && l.pathname !== basePath + '/')) {
+          var path = l.pathname.replace(basePath, '').replace(/^\//, '');
+          var redirectUrl = basePath + '/index.html';
+          
+          if (path && path !== 'index.html' && path !== '404.html') {
+            // Preserve the path as a query parameter for React Router
+            redirectUrl += '?/' + path.replace(/&/g, '~and~');
+          }
+          
+          if (l.search) {
+            redirectUrl += (redirectUrl.includes('?') ? '&' : '?') + l.search.slice(1).replace(/&/g, '~and~');
+          }
+          
+          if (l.hash) {
+            redirectUrl += l.hash;
+          }
+          
+          window.location.replace(redirectUrl);
+        }
+      })();
     </script>
   </head>
   <body>
+    <p>Redirecting to <a href="/aggregate-application/index.html">home page</a>...</p>
     <script>
-      // Fallback: redirect to index.html after a short delay
-      setTimeout(function() {
+      // Fallback: redirect to index.html immediately
+      if (window.location.pathname !== '/aggregate-application/index.html') {
         window.location.replace('/aggregate-application/index.html');
-      }, 100);
+      }
     </script>
   </body>
 </html>
