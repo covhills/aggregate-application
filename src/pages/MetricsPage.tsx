@@ -125,6 +125,13 @@ export const MetricsPage = () => {
     'SBR'
   ];
 
+  // Default referral types that should always be available
+  const DEFAULT_REFERRAL_TYPES = [
+    'Medical Doctor',
+    'Psychiatrist',
+    'Psychologist'
+  ];
+
   // Normalize lead source - fix incorrect values
   // Preserve all lead source values exactly as they appear, only fix spelling of "Jessica Estabane" to "Jessica Estebane"
   const normalizeLeadSource = (leadSource: string | undefined): string => {
@@ -541,7 +548,7 @@ export const MetricsPage = () => {
   const uniqueReferralSources = Array.from(new Set(referrals.map(r => r.referralSource).filter(Boolean))).sort();
   const uniqueReferralOuts = Array.from(new Set(referrals.map(r => r.referralOut).filter(Boolean))).sort();
   // Get unique referral types, normalize them and ensure misspelled version never appears
-  const uniqueReferralTypes = Array.from(
+  const referralTypesFromData = Array.from(
     new Set(
       referrals
         .map(r => normalizeReferralType(r.referralType))
@@ -552,7 +559,10 @@ export const MetricsPage = () => {
           return lowerType !== 'treament center' && !lowerType.includes('treament');
         })
     )
-  ).sort();
+  );
+  
+  // Merge with default referral types and sort
+  const uniqueReferralTypes = Array.from(new Set([...DEFAULT_REFERRAL_TYPES, ...referralTypesFromData])).sort();
   const uniqueInsuranceCompanies = Array.from(new Set(referrals.map(r => r.insuranceCompany).filter(Boolean))).sort();
   const uniqueLevelOfCare = Array.from(new Set(referrals.map(r => r.levelOfCare).filter(Boolean))).sort();
   const uniqueReferralSentTo = Array.from(new Set(referrals.map(r => normalizeReferralSentTo(r.referralSentTo)).filter(Boolean))).sort();

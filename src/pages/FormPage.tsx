@@ -111,6 +111,13 @@ export const FormPage = () => {
   // Valid lead sources - used for validation and normalization
   const VALID_LEAD_SOURCES = LEAD_SOURCE_OPTIONS;
 
+  // Default referral types that should always be available
+  const DEFAULT_REFERRAL_TYPES = [
+    'Medical Doctor',
+    'Psychiatrist',
+    'Psychologist'
+  ];
+
   // Normalize lead source - fix incorrect values
   const normalizeLeadSource = (leadSource: string | undefined): string => {
     if (!leadSource) return '';
@@ -192,8 +199,11 @@ export const FormPage = () => {
                 return lowerType !== 'treament center' && !lowerType.includes('treament');
               })
           )
-        ).sort() as string[];
-        setUniqueReferralTypes(referralTypes);
+        ) as string[];
+        
+        // Merge with default referral types and sort
+        const allReferralTypes = Array.from(new Set([...DEFAULT_REFERRAL_TYPES, ...referralTypes])).sort();
+        setUniqueReferralTypes(allReferralTypes);
 
         // Fetch unique referral sources (clean "Accounts::::" prefix)
         const referralSources = Array.from(
